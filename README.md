@@ -1,35 +1,28 @@
-# RigGO 12.3.7 — Revision
+# RigGO
 
-**Uso previsto:** repositorio **privado** Contiene una copia fiel del artefacto web 12.3.7 y la documentación técnica disponible. 
-## Qué hay aquí
+Static web application release **12.3.7** (build `2026-09-26-1237-A1`). The deployable files are in `site/`. This repository captures the released assets and the database change scripts associated with Reset and execution run compatibility.
 
-| Ruta | Contenido |
+## Repository map
+
+| Path | Contents |
 | --- | --- |
-| `site/` | Artefacto Cloudflare-ready 12.3.7: PWA estática, JS consolidado, CSS, imágenes y plantilla Excel. |
-| `db/` | SQL 12.3.6 de Reset y hotfix 12.3.7, ambos **ya ejecutados** según el historial de producción compartido. No se ejecutan automáticamente. |
-| `tests/` | Harness y resultados de pruebas locales/simuladas de 12.3.7. |
-| `docs/` | Arquitectura, contratos de datos, estado de validación, riesgos y auditoría local. |
+| `site/` | HTML, JavaScript, CSS, images, PWA files, and the Excel template served as static assets. |
+| `db/` | Two historical SQL changes. Read [db/README.md](db/README.md) before using them. |
+| `docs/` | [Architecture](docs/ARCHITECTURE.md), [data and security](docs/DATA_AND_TRUST.md), [operations](docs/OPERATIONS.md), [known limitations](docs/KNOWN_LIMITATIONS.md), and [release notes](docs/releases/12.3.7.md). |
+| `scripts/verify_snapshot.py` | Checks the 31 `site/` files against `SITE_SHA256SUMS.txt`. |
 
-La versión del artefacto es `2026-09-26-1237-A1` (`site/version.json`). El ZIP fuente fue `RigGO_12_3_7_CLOUDFLARE_READY.zip`; `site/` conserva sus 33 entradas sin modificar. La aplicación puede abrirse como sitio estático, pero **no debe conectarse a producción desde un entorno de prueba informal**: el artefacto contiene la URL de Supabase y una clave *publishable* de cliente, visibles por diseño en el navegador.
+## Verify the release
 
-## Punto de partida para la revisión
-
-1. [Arquitectura y flujos](docs/ARCHITECTURE.md).
-2. [Datos, RPCs y límites de confianza](docs/DATA_AND_TRUST.md).
-3. [Estado de producción y evidencias](docs/VALIDATION_STATUS.md).
-4. [Preguntas y riesgos para IT](docs/IT_REVIEW.md).
-
-## Alcance y procedencia
-
-Este repositorio es un **snapshot del artefacto de entrega**, no el código fuente original con historial de desarrollo, sistema de build, lockfile o infraestructura como código. El HTML contiene lógica inline de distintas versiones y los bundles son archivos de entrega. No se dispone aquí de una exportación completa del esquema Supabase, políticas RLS, configuración de Cloudflare Workers, secretos de entorno, funciones Edge, ni código de servicios de correo. IT necesitará acceso propio a esas consolas para una revisión integral.
-
-Según la validación comunicada por el operador, el hotfix del guard 12.3.7 está instalado en Supabase y el guardado de RigGO 12.3.6 volvió a funcionar. **No tenemos confirmación documental de que el frontend 12.3.7 esté publicado**, ni un canary real de dos dispositivos Reset → Reactivate. Los resultados en `tests/` son locales/simulados; ver [estado de validación](docs/VALIDATION_STATUS.md).
-
-## Comprobación local sin tocar producción
+Run from the repository root with Python 3 and Node.js installed:
 
 ```bash
 python3 scripts/verify_snapshot.py
 node --check site/sw.js
+node --check site/assets/riggo-app.8fd9790e3793.js
+node --check site/assets/riggo-1236-operational.ecf58ba518af.js
+node --check site/assets/riggo-1217-field-integrity.ea49ec55f6bc.js
+node --check site/assets/riggo-123-move-intelligence.79811e859444.js
+node --check site/assets/riggo-1237-field-ux.1b6be3b11202.js
 ```
 
-No hay paso de build. `site/` es el contenido publicable. **No ejecutar los SQL de `db/` como parte de un pipeline o una instalación nueva**; primero deben ser revisados contra el esquema y el historial real de cada entorno.
+There is no build command or dependency installation: `site/` contains the release files. The checksum manifest records their bytes; it does not establish which version is currently deployed. See [operations](docs/OPERATIONS.md) for deployment boundaries and [known limitations](docs/KNOWN_LIMITATIONS.md) for open issues.

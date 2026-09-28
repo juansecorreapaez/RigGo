@@ -1,33 +1,32 @@
-# Datos y límites de confianza
+# Data and security
 
-## Datos principales identificados
+## Data used by the application
 
-| Recurso | Función observada | Evidencia en paquete |
-| --- | --- | --- |
-| `moves` | Maestro, Plan, estado y revisión de Move. | Frontend y RPC Reset/Activation en SQL 12.3.6. |
-| `riggo_execution_state` | Payload y revisión de ejecución vigente. | RPCs C4/v2/v3 y trigger de corrida. |
-| `riggo_execution_history` | Historial técnico; ya hubo un incidente de crecimiento, resuelto aparte. | SQL 12.3.6 y handover histórico; no hay purga en este repo. |
-| `riggo_operations`, `riggo_move_audit` | Idempotencia/auditoría de cambios de ciclo de vida. | SQL 12.3.6. |
-| `daily_periods`, `daily_closures`, `reports`, `riggo_move_reports` | Días, cierres y reportes. | Frontend y SQL Reset. |
-| `access_list`, `move_assignments` | Acceso de usuarios y asignaciones de Moves. | Consultas frontend. |
-| `riggo-files` | Bucket de Storage para PDFs y medios. | Llamadas de Storage en frontend. |
+| Resource | Role |
+| --- | --- |
+| `moves` | Move master record, Plan, status, and revision. |
+| `riggo_execution_state` | Current execution payload and revision. |
+| `riggo_execution_history` | Execution snapshots and technical history. |
+| `riggo_operations`, `riggo_move_audit` | Operation idempotency and lifecycle audit. |
+| `daily_periods`, `daily_closures`, `reports`, `riggo_move_reports` | Daily periods, closures, and reports. |
+| `access_list`, `move_assignments` | Access metadata and Move assignments read by the client. |
+| `riggo-files` | Supabase Storage bucket used for media and generated files. |
 
-Esta es una **lista observada**, no un inventario completo del esquema. Hay otras tablas de configuración y distribución. Los tipos, índices, FKs, políticas RLS, grants y retención no pueden certificarse con el artefacto web.
+This list comes from the release files and the included SQL. It is not a complete schema or a database export.
 
-## Autoridad y seguridad
+## Trust boundaries
 
-- El navegador y su IndexedDB son estado de trabajo y caché; PostgreSQL es autoridad para la ejecución C4. El cliente no debe ser tratado como un límite de seguridad.
-- La clave *publishable* de Supabase está en `site/index.html` y es pública por diseño. No encontramos una clave `service_role`, `sb_secret_` o clave privada en los archivos incluidos. Esto **no prueba** que no exista una exposición fuera de este snapshot.
-- `access_list` y permisos de UI no sustituyen RLS/grants y chequeos dentro de RPC. IT debe verificar acceso directo a tablas, Storage y ejecución de funciones para usuarios autenticados/no autenticados.
-- `_riggoRunId` separa corridas para evitar la resurrección de ejecución vieja; no es una credencial de autenticación. CAS/revisión y permisos siguen siendo necesarios.
-- Las excepciones `riggo.atomic_reset` y `riggo.atomic_activation` dependen de rutas RPC transaccionales. IT debe revisar los grants y si hay formas de invocar funciones privilegiadas fuera del flujo esperado.
+- Browser state and IndexedDB are local working copies. The server must enforce permissions, row access, and revision checks regardless of UI controls.
+- `site/index.html` embeds a Supabase project URL and a **publishable client key** for browser use. A static scan of the included code found no `service_role` key, `sb_secret_` key, or private key. This finding covers only the files in this repository.
+- `_riggoRunId` distinguishes execution runs; it is a data integrity token, not a login credential or permission grant.
+- The 12.3.6 SQL defines three `SECURITY DEFINER` RPCs and grants execution to `authenticated`. Their authorization logic, `search_path`, and delegated calls need evaluation against the actual database schema and grants.
+- UI checks around `access_list` cannot establish effective access. The deployed RLS policies, function grants, Storage policies, and any Edge Functions must be inspected in the Supabase project.
 
-## Contrato de sincronización C4 observado
+## C4 write contract
 
-1. Leer el estado autoritativo mediante `riggo_execution_read_c4`.
-2. Crear/actualizar un pendiente local de ejecución con `operation_id` y revisión esperada.
-3. Guardar por `riggo_execution_save_v3` si hay `_riggoRunId`, o v2 en caso legacy.
-4. Ante conflicto de revisión, conciliar según la lógica C4; ante cambio de corrida, **Server Truth gana sin merge**.
-5. El guard 12.3.7 de `db/12.3.7_stale_run_compat_hotfix_APPLIED.sql` rechaza token faltante/distinto cuando el estado previo ya tiene token. Reset/Activation son rutas atómicas especiales.
+1. Read execution through `riggo_execution_read_c4`.
+2. Queue work locally with `operation_id` and an expected revision.
+3. Save through v3 for a tokenized execution, or the legacy v2 path when applicable.
+4. Reconcile revision conflicts. If the execution run changed, discard the old queued item and replace local execution with server state.
 
-El cliente también tiene una ruta de recuperación `riggo_execution_recover_c4`. Revisar sus grants y criterios de autorización en la base real. Los archivos ya emitidos en Storage y correos ya enviados son artefactos externos al payload de una corrida reiniciada.
+The included 12.3.7 guard prevents a missing or different run ID from replacing tokenized execution. Atomic Reset and Activation use server-side exceptions. The separate recovery RPC and all live table/Storage policies are outside the SQL in this repository. A Reset of database execution does not by itself recall previously delivered email or uploaded files.
