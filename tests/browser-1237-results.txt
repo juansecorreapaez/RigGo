@@ -1,0 +1,47 @@
+PASS 12.3.7 application boot + field patch
+PASS C4 reports server-wins/no-cross-run policy
+PASS Flat Time community saves + C4 ACK
+PASS Flat Time mobility saves + C4 ACK
+PASS Flat Time road saves + C4 ACK
+PASS Flat Time move_company saves + C4 ACK
+PASS Flat Time preventive saves + C4 ACK
+PASS Flat Time rig_repair saves + C4 ACK
+PASS Flat Time weather saves + C4 ACK
+PASS Flat Time operator saves + C4 ACK
+PASS Flat Time hse saves + C4 ACK
+PASS Flat Time other saves + C4 ACK
+PASS Daily Siguiente first-click step 0->1
+PASS Daily Siguiente first-click step 1->2
+PASS Daily Siguiente first-click step 2->3
+PASS Daily Siguiente first-click step 3->4
+PASS Daily Siguiente first-click step 4->5
+PASS crewSame control exists
+PASS crewSame keeps scroll position
+PASS vehiclesSame control exists
+PASS vehiclesSame keeps scroll position
+PASS lmcSame control exists
+PASS lmcSame keeps scroll position
+PASS hseSame control exists
+PASS hseSame keeps scroll position
+PASS load click cycle -> Cargada
+PASS load click does not open selector
+PASS load click cycle -> Posicionada
+PASS load click does not open selector
+PASS load click cycle -> Pendiente
+PASS load click does not open selector
+PASS manual Day close before cutoff retained; scheduled cutoff preserved
+PASS 12.3.4-like v2 + CURRENT _riggoRunId saves
+PASS missing/old run tokens rejected; server execution unchanged
+PASS pending old-run outbox discarded even when local already matches server
+PASS C4 handles stale_execution_run in response.error
+PASS C4 handles stale_execution_run in data.code
+PASS Reset action remains next to Edit
+PASS Reset ACTIVE -> READY still works
+PASS Reset retry reuses operation_id
+PASS Reset -> Reactivate rotates execution run token in two-client simulation
+PASS old device cannot revive pre-reset run; client adopts reactivated server run without merge
+PASS explicit cutoff date+time controls retained
+PASS Move Intelligence + Performance bundles present
+PASS password recovery Nueva contraseña UI retained
+PASS 390px mobile no global horizontal overflow
+PASS no uncaught browser errors ([])

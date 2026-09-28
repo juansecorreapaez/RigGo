@@ -1,0 +1,21 @@
+/index.html
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/sw.js
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/version.json
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/assets/riggo-app.8fd9790e3793.js
+  Cache-Control: public, max-age=31536000, immutable
+/assets/riggo-app.1f369e790616.css
+  Cache-Control: public, max-age=31536000, immutable
+/assets/riggo-1236-operational.ecf58ba518af.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-1217-field-integrity.ea49ec55f6bc.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-123-move-intelligence.79811e859444.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-1237-field-ux.1b6be3b11202.js
+  Cache-Control: public, max-age=31536000, immutable

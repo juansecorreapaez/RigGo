@@ -1,0 +1,50 @@
+PASS 01 diagnostic contains no DML/DDL/procedural writes
+PASS 01 diagnostic inspects installed functions + trigger read-only
+PASS 12.3.6 production guard requires execution_run_verified GUC
+PASS v2 save contract does not set execution_run_verified GUC
+PASS v3 save contract sets execution_run_verified GUC
+PASS actual 12.3.4 C4 flush uses riggo_execution_save_v2
+PASS actual 12.3.4 sanitizeExec does not strip _riggoRunId
+PASS client sanitizeExec preserves top-level _riggoRunId
+PASS handover candidate removes GUC requirement from run guard
+PASS candidate uses run-token identity predicate
+PASS 12.3.7 hotfix removes GUC requirement
+PASS 12.3.7 guard blocks missing/different token when current row has token
+PASS reset + activation remain atomic exceptions
+PASS activation rotates run token server-side
+PASS hotfix contains no direct data mutation of current move/execution rows
+PASS hotfix fails closed on expected 12.3.6 contracts
+PASS guard truth table: same run allowed
+PASS guard truth table: missing run blocked
+PASS guard truth table: different/old run blocked
+PASS guard truth table: atomic activation exception
+PASS guard truth table: atomic reset exception
+PASS guard truth table: never-reset legacy row remains compatible
+PASS C4 recognizes stale_execution_run in response.error and structured data
+PASS hydrate compares pending outbox run independently from local state
+PASS flush discards/reconciles stale-run outbox before retry/merge
+PASS server-wins adoption deletes outbox and replaces execution with no cross-run merge
+PASS runtime self-check exposes server-wins/no-merge policy
+PASS 12.3.6 preserved byte-for-byte: assets/riggo-1236-operational.ecf58ba518af.js
+PASS 12.3.6 preserved byte-for-byte: assets/riggo-1217-field-integrity.ea49ec55f6bc.js
+PASS 12.3.6 preserved byte-for-byte: assets/riggo-123-move-intelligence.79811e859444.js
+PASS 12.3.6 preserved byte-for-byte: assets/riggo-app.1f369e790616.css
+PASS 12.3.6 preserved byte-for-byte: assets/RigGO_Move_Template.xlsx
+PASS 12.3.7 field UX preserves 12.3.6 compatibility alias
+PASS 12.3.6 load/report/scroll UX contracts retained
+PASS version.json identifies 12.3.7 assets
+PASS versioned asset exists: riggo-app.8fd9790e3793.js
+PASS index + service worker reference: riggo-app.8fd9790e3793.js
+PASS versioned asset exists: riggo-app.1f369e790616.css
+PASS index + service worker reference: riggo-app.1f369e790616.css
+PASS versioned asset exists: riggo-1236-operational.ecf58ba518af.js
+PASS index + service worker reference: riggo-1236-operational.ecf58ba518af.js
+PASS versioned asset exists: riggo-1217-field-integrity.ea49ec55f6bc.js
+PASS index + service worker reference: riggo-1217-field-integrity.ea49ec55f6bc.js
+PASS versioned asset exists: riggo-123-move-intelligence.79811e859444.js
+PASS index + service worker reference: riggo-123-move-intelligence.79811e859444.js
+PASS versioned asset exists: riggo-1237-field-ux.1b6be3b11202.js
+PASS index + service worker reference: riggo-1237-field-ux.1b6be3b11202.js
+PASS immutable headers reference changed 12.3.7 bundles
+PASS service worker does not clear IndexedDB/Site Data
+PASS old 12.3.6 reset SQL removed from deploy root to prevent blind rerun

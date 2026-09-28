@@ -1,0 +1,3 @@
+PASS syntax: external JS bundles + sw.js and all inline scripts
+PASS local references/version/service-worker/cache headers checked by contracts_1237.py
+PASS unchanged 12.3.6 operational/integrity/intelligence/CSS/template hashes checked

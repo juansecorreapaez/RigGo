@@ -1,0 +1,12 @@
+{
+  "release": "12.3.7-stale-run-compat",
+  "build": "2026-09-26-1237-A1",
+  "bundle": "riggo-app.8fd9790e3793.js",
+  "css": "riggo-app.1f369e790616.css",
+  "schema": "12.3.7-stale-run-compat+atomic-reset-run-token+c4-no-cross-run-merge",
+  "stabilization": "Preserves all 12.3.6 UX fixes; same-run v2/v3 compatibility; missing/different run blocked; stale outbox discarded with server-wins adoption and no cross-run merge.",
+  "operational_bundle": "riggo-1236-operational.ecf58ba518af.js",
+  "field_integrity_bundle": "riggo-1217-field-integrity.ea49ec55f6bc.js",
+  "move_intelligence_bundle": "riggo-123-move-intelligence.79811e859444.js",
+  "field_ux_bundle": "riggo-1237-field-ux.1b6be3b11202.js"
+}
