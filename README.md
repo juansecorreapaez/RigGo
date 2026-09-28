@@ -1,4 +1,4 @@
-# RigGO 12.3.7 — paquete de revisión para IT
+# RigGO 12.3.7 — Revision
 
 **Uso previsto:** repositorio **privado** Contiene una copia fiel del artefacto web 12.3.7 y la documentación técnica disponible. 
 ## Qué hay aquí
