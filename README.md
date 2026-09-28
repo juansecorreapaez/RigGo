@@ -1,7 +1,6 @@
 # RigGO 12.3.7 — paquete de revisión para IT
 
-**Uso previsto:** repositorio **privado** del equipo autorizado de Nabors. Contiene una copia fiel del artefacto web 12.3.7 y la documentación técnica disponible. No es una solicitud de despliegue ni una exportación de la base productiva.
-
+**Uso previsto:** repositorio **privado** Contiene una copia fiel del artefacto web 12.3.7 y la documentación técnica disponible. 
 ## Qué hay aquí
 
 | Ruta | Contenido |
@@ -25,10 +24,6 @@ La versión del artefacto es `2026-09-26-1237-A1` (`site/version.json`). El ZIP 
 Este repositorio es un **snapshot del artefacto de entrega**, no el código fuente original con historial de desarrollo, sistema de build, lockfile o infraestructura como código. El HTML contiene lógica inline de distintas versiones y los bundles son archivos de entrega. No se dispone aquí de una exportación completa del esquema Supabase, políticas RLS, configuración de Cloudflare Workers, secretos de entorno, funciones Edge, ni código de servicios de correo. IT necesitará acceso propio a esas consolas para una revisión integral.
 
 Según la validación comunicada por el operador, el hotfix del guard 12.3.7 está instalado en Supabase y el guardado de RigGO 12.3.6 volvió a funcionar. **No tenemos confirmación documental de que el frontend 12.3.7 esté publicado**, ni un canary real de dos dispositivos Reset → Reactivate. Los resultados en `tests/` son locales/simulados; ver [estado de validación](docs/VALIDATION_STATUS.md).
-
-## Publicación recomendada
-
-Crear un repositorio **privado en la organización corporativa**, con IT como revisores y acceso limitado. No usar una cuenta personal ni hacer público el código, la URL del backend, el modelo operativo y la marca sin autorización corporativa. Configurar revisión de cambios antes de modificar `site/` o `db/`. El primer commit es un snapshot para arquitectura; un futuro equipo de desarrollo podrá migrarlo a un proyecto fuente reproducible.
 
 ## Comprobación local sin tocar producción
 
