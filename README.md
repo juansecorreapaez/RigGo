@@ -1,6 +1,8 @@
 # RigGO
 
-Static web application release **12.3.7** (build `2026-09-26-1237-A1`). The deployable files are in `site/`. This repository captures the released assets and the database change scripts associated with Reset and execution run compatibility.
+RigGO supports rig Move planning, field execution, and progress reporting. A Move starts with an imported Excel plan, then tracks actual activities, loads, Flat Time, daily periods, and plan-versus-actual performance.
+
+This repository contains static web application release **12.3.7** (build `2026-09-26-1237-A1`). The deployable files are in `site/`. It captures the released assets and database change scripts associated with Reset and execution run compatibility.
 
 ## Repository map
 
@@ -8,7 +10,7 @@ Static web application release **12.3.7** (build `2026-09-26-1237-A1`). The depl
 | --- | --- |
 | `site/` | HTML, JavaScript, CSS, images, PWA files, and the Excel template served as static assets. |
 | `db/` | Two historical SQL changes. Read [db/README.md](db/README.md) before using them. |
-| `docs/` | [Architecture](docs/ARCHITECTURE.md), [data and security](docs/DATA_AND_TRUST.md), [operations](docs/OPERATIONS.md), [known limitations](docs/KNOWN_LIMITATIONS.md), and [release notes](docs/releases/12.3.7.md). |
+| `docs/` | [Architecture](docs/ARCHITECTURE.md), [service inventory](docs/SERVICE_INVENTORY.md), [data and security](docs/DATA_AND_TRUST.md), [operations](docs/OPERATIONS.md), [known limitations](docs/KNOWN_LIMITATIONS.md), and [release notes](docs/releases/12.3.7.md). |
 | `scripts/verify_snapshot.py` | Checks the 31 `site/` files against `SITE_SHA256SUMS.txt`. |
 
 ## Verify the release
