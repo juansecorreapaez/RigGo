@@ -6,7 +6,13 @@ const uid=()=>{try{return crypto.randomUUID()}catch(_){return `1235-${Date.now()
 const esc=v=>{try{return enc(v??'')}catch(_){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}};
 function live(moveId=null,periodId=null){try{return W.RigGO1217?.liveCtx?.(moveId,periodId)||{m:null,p:null,c:null}}catch(_){return{m:null,p:null,c:null}}}
 function mark(m){try{W.RigGOV120?.markDirty?.(m)}catch(_){}try{saveLocal()}catch(_){}}
-function renderAt(y=0){W.__RIGGO_RENDER_DEFERRED__=false;try{const a=document.activeElement;if(a&&a!==document.body)a.blur?.()}catch(_){};W.__RIGGO_RENDER_DEFERRED__=false;setTimeout(()=>{try{render()}catch(e){console.warn('RigGO 12.3.7 render',e)}requestAnimationFrame(()=>requestAnimationFrame(()=>{try{window.scrollTo(0,y)}catch(_){}}))},0)}
+function renderAt(y=0,preferred=null){
+ const focus=W.RigGOUI?.captureFocus(preferred||document.activeElement);
+ W.__RIGGO_RENDER_DEFERRED__=false;
+ try{const a=document.activeElement;if(a&&a!==document.body)a.blur?.()}catch(_){}
+ W.__RIGGO_RENDER_DEFERRED__=false;
+ setTimeout(()=>{try{render()}catch(e){console.warn('RigGO render',e)}requestAnimationFrame(()=>requestAnimationFrame(()=>{window.scrollTo(0,y);W.RigGOUI?.restoreFocus(focus)}))},0);
+}
 
 /* --------------------------------------------------------------------------
    1) Transporte de Cargas: restore direct one-click cycling.
@@ -14,7 +20,7 @@ function renderAt(y=0){W.__RIGGO_RENDER_DEFERRED__=false;try{const a=document.ac
    Physical Rig Move progress continues to count POSITIONED only.
    -------------------------------------------------------------------------- */
 function loadStatus(x,p){try{return statusAt(x,p?.end)}catch(_){if(x?.positionedAt)return'Posicionada';if(x?.transitAt)return'En tránsito';if(x?.loadedAt)return'Cargada';return'Pendiente'}}
-const loadBusy=new Set();
+const loadBusy=new Set(),loadUndo=new Map();
 async function directAdvanceLoad(m0,p0,id,button=null){
   const {m,p}=live(m0?.id,p0?.id);if(!m||!p)return;
   const x=m.exec?.loads?.find(z=>String(z.id)===String(id));if(!x)return;
@@ -22,33 +28,70 @@ async function directAdvanceLoad(m0,p0,id,button=null){
   const before=clone(x), st=loadStatus(x,p), at=typeof actionTimestamp==='function'?actionTimestamp(p):new Date().toISOString();
   let next='';
   if(st==='Pendiente')next='Cargada';
-  else if(st==='Cargada'||st==='En tránsito')next='Posicionada';
+  else if(st==='Cargada')next='En tránsito';
+  else if(st==='En tránsito')next='Posicionada';
   else {
     if(!confirm(`¿Reiniciar esta carga a Pendiente?\n\n${x.description||'Carga'}`))return;
     next='Pendiente';
   }
-  loadBusy.add(lock);if(button){button.dataset.riggo1235Busy='1';button.disabled=true}
+  const started=performance.now();loadBusy.add(lock);if(button){button.dataset.riggo1235Busy='1';button.setAttribute('aria-disabled','true')}
   try{
     x.history=Array.isArray(x.history)?x.history:[];
     if(next==='Pendiente'){
-      x.loadedAt=null;x.transitAt=null;x.positionedAt=null;x.history=[];
+      x.loadedAt=null;x.transitAt=null;x.positionedAt=null;
+      x.history.push({id:uid(),status:'Pendiente',at,user:state.auth.email});
       m.audit=m.audit||[];m.audit.push({at:new Date().toISOString(),user:state.auth.email,action:'load_status_reset',loadId:x.id,period:p.id,from:st,to:'Pendiente'});
     }else{
       x.history.push({id:uid(),status:next,at,user:state.auth.email});
       if(next==='Cargada'){x.loadedAt=at;x.transitAt=null;x.positionedAt=null}
       else if(next==='En tránsito'){x.loadedAt=x.loadedAt||at;x.transitAt=at;x.positionedAt=null}
-      else {x.loadedAt=x.loadedAt||at;x.transitAt=null;x.positionedAt=at}
+      else {x.loadedAt=x.loadedAt||at;x.transitAt=x.transitAt||at;x.positionedAt=at}
       m.audit=m.audit||[];m.audit.push({at:new Date().toISOString(),user:state.auth.email,action:'load_status',loadId:x.id,period:p.id,status:next,mode:'direct_cycle_1235'});
     }
+    loadUndo.set(lock,{moveId:m.id,periodId:p.id,runId:m.exec._riggoRunId,before,eventId:x.history.at(-1).id,to:next});
     mark(m);
     const r=await W.RigGO1217?.persistImmediate?.(m,{label:`Guardando ${next}…`});
     if(r&&!r.ok&&!r.pending)throw (r.error||new Error('No fue posible guardar el estado de la carga.'));
-    const y=window.scrollY;renderAt(y);
+    const y=window.scrollY,active=document.activeElement;renderAt(y,active===document.body||active===button?button:active);
+    W.RigGOUI?.announce?.((x.description||'Carga')+' · '+next+(r?.pending||navigator.onLine===false?' · Guardado en este dispositivo · Por sincronizar':r?.ok&&!r?.noChange?' · Guardado y sincronizado':' · Guardado en este dispositivo'));
   }catch(e){
-    renderAt(window.scrollY);
+    renderAt(window.scrollY,button);
+    W.RigGOUI?.announce?.('No se pudo confirmar el registro. Revisa la sincronización.',true);
     alert('El estado está local, sin confirmar en servidor. Revisa la sincronización: '+String(e?.message||e));
-  }finally{loadBusy.delete(lock);if(button&&document.body.contains(button)){button.disabled=false;delete button.dataset.riggo1235Busy}}
+  }finally{setTimeout(()=>{loadBusy.delete(lock);if(button&&document.body.contains(button)){button.removeAttribute('aria-disabled');delete button.dataset.riggo1235Busy}W.RigGOUI?.decorate?.()},Math.max(0,650-(performance.now()-started)))}
 }
+
+function isLoadBusy(moveId,id){return loadBusy.has(String(moveId)+':'+String(id))}
+function canUndoLoad(moveId,id){
+ const record=loadUndo.get(String(moveId)+':'+String(id));
+ const {m,p}=live(moveId,record?.periodId);
+ const x=m?.exec?.loads?.find(z=>String(z.id)===String(id));
+ return !!record&&!!m&&!!p&&record.runId===m.exec._riggoRunId&&m.exec.selectedPeriodId===record.periodId&&x?.history?.at(-1)?.id===record.eventId&&loadStatus(x,p)===record.to&&!isLoadBusy(moveId,id);
+}
+async function undoLoad(m0,p0,id,button=null){
+ const lock=String(m0?.id)+':'+String(id),record=loadUndo.get(lock);
+ if(!record||!canUndoLoad(m0?.id,id)){W.RigGOUI?.announce?.('El registro cambió. Revisa el estado actual antes de corregir.',true);return}
+ const {m,p}=live(record.moveId,record.periodId),x=m.exec.loads.find(z=>String(z.id)===String(id));
+ const previous=loadStatus(record.before,p);
+ if(!confirm('¿Corregir '+(x.description||'esta carga')+' de '+record.to+' a '+previous+'? El registro anterior permanecerá en el historial.'))return;
+ const started=performance.now();loadBusy.add(lock);if(button)button.disabled=true;
+ try{
+   const at=typeof actionTimestamp==='function'?actionTimestamp(p):new Date().toISOString();
+   x.history.push({id:uid(),status:previous,at,user:state.auth.email,corrects:record.eventId});
+   for(const key of ['loadedAt','transitAt','positionedAt'])x[key]=record.before[key]||null;
+   m.audit=m.audit||[];m.audit.push({at:new Date().toISOString(),user:state.auth.email,action:'load_status_correction',loadId:id,period:p.id,from:record.to,to:previous,corrects:record.eventId});
+   loadUndo.delete(lock);mark(m);
+   const r=await W.RigGO1217?.persistImmediate?.(m,{label:'Guardando corrección…'});
+   if(r&&!r.ok&&!r.pending)throw r.error||new Error('No se pudo confirmar la corrección.');
+   const active=document.activeElement,target=document.querySelector('[data-v3-load="'+CSS.escape(String(id))+'"]');
+   renderAt(window.scrollY,active===document.body||active===button?target:active);
+   W.RigGOUI?.announce?.((x.description||'Carga')+' · Corregida a '+previous+(r?.pending?' · Por sincronizar':''));
+ }catch(error){
+   renderAt(window.scrollY);W.RigGOUI?.announce?.('Corrección pendiente de confirmar. Revisa la sincronización.',true);
+   alert('No se pudo confirmar la corrección: '+String(error?.message||error));
+ }finally{setTimeout(()=>{loadBusy.delete(lock);W.RigGOUI?.decorate?.()},Math.max(0,650-(performance.now()-started)))}
+}
+
 function installLoadAuthority(){try{W.advanceLoad=directAdvanceLoad;advanceLoad=directAdvanceLoad}catch(_){W.advanceLoad=directAdvanceLoad}}
 
 /* --------------------------------------------------------------------------
@@ -64,7 +107,7 @@ function reportMissing(step,c,p){
 function showMissing(items){
   document.querySelectorAll('.v61-required-error').forEach(x=>x.classList.remove('v61-required-error'));
   document.querySelector('.v61-validation-banner')?.remove();if(!items?.length)return;
-  const b=document.createElement('div');b.className='v61-validation-banner';b.textContent='Completa antes de continuar: '+items.map(x=>x.label).join(', ')+'.';
+  const b=document.createElement('div');b.className='v61-validation-banner';b.id='riggoValidationError';b.setAttribute('role','alert');b.setAttribute('aria-atomic','true');b.textContent='Completa antes de continuar: '+items.map(x=>x.label).join(', ')+'.';
   document.querySelector('.v3-report-head')?.insertAdjacentElement('afterend',b);
   const ids=items.flatMap(x=>x.ids||[]);ids.forEach(id=>E(id)?.classList.add('v61-required-error'));
   const first=ids.map(E).find(Boolean);if(first){first.scrollIntoView?.({behavior:'smooth',block:'center'});setTimeout(()=>{try{first.focus({preventScroll:true})}catch(_){}},80)}
@@ -188,6 +231,6 @@ function injectResetButton(){
 
 function styles(){if(E('riggo1235Style'))return;const s=document.createElement('style');s.id='riggo1235Style';s.textContent=`.riggo1235-reset{border-color:rgba(239,68,68,.45)!important;color:#ffb4bb!important;background:rgba(113,24,35,.18)!important}.riggo1235-reset:hover{background:rgba(140,30,42,.30)!important}@media(max-width:700px){.v3-exec-title>.row:has(#riggo1235ResetMove){grid-template-columns:repeat(4,minmax(0,1fr))!important}}`;document.head.appendChild(s)}
 function post(){installLoadAuthority();injectResetButton();if(state?.screen==='execute'&&state?.execMode==='day'&&state?.execTab==='report')bindCarryNoJump()}
-function install(){if(W.__RIGGO_1235_INSTALLED__)return;W.__RIGGO_1235_INSTALLED__=true;styles();installLoadAuthority();installReportAuthority();const base=typeof W.render==='function'?W.render:(typeof render==='function'?render:null);if(base&&!base.__riggo1235){const fn=function(){const r=base.apply(this,arguments);requestAnimationFrame(post);return r};fn.__riggo1235=true;try{W.render=fn;render=fn}catch(_){W.render=fn}}post();W.RigGO1237=W.RigGO1236=W.RigGO1235={release:RELEASE,build:BUILD,directAdvanceLoad,goReport,resetMoveToReady,openResetSheet,selfCheck:()=>({ok:true,loadDirectCycle:['Pendiente','Cargada','Posicionada'],reportSingleClick:true,carryPreservesScroll:true,atomicResetRpc:'riggo_reset_move_to_ready_v1'})};}
+function install(){if(W.__RIGGO_1235_INSTALLED__)return;W.__RIGGO_1235_INSTALLED__=true;styles();installLoadAuthority();installReportAuthority();const base=typeof W.render==='function'?W.render:(typeof render==='function'?render:null);if(base&&!base.__riggo1235){const fn=function(){const r=base.apply(this,arguments);requestAnimationFrame(post);return r};fn.__riggo1235=true;try{W.render=fn;render=fn}catch(_){W.render=fn}}post();W.RigGO1237=W.RigGO1236=W.RigGO1235={release:RELEASE,build:BUILD,directAdvanceLoad,undoLoad,canUndoLoad,isLoadBusy,goReport,resetMoveToReady,openResetSheet,selfCheck:()=>({ok:true,loadDirectCycle:['Pendiente','Cargada','En tránsito','Posicionada'],reportSingleClick:true,carryPreservesScroll:true,atomicResetRpc:'riggo_reset_move_to_ready_v1'})};}
 let tries=0;(function wait(){tries++;let ok=false;try{ok=!document.documentElement.classList.contains('riggo-booting')&&W.RigGO?.runtime?.selfCheck?.()?.ok===true&&!!W.RigGO1217}catch(_){}if(ok)return install();if(tries<500)setTimeout(wait,60);else console.error('RigGO 12.3.7 field UX patch not installed')})();
 })();

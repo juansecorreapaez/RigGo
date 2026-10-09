@@ -1,12 +1,32 @@
 {
-  "release": "12.3.7-stale-run-compat",
-  "build": "2026-09-26-1237-A1",
-  "bundle": "riggo-app.8fd9790e3793.js",
-  "css": "riggo-app.1f369e790616.css",
+  "release": "12.4.2-accessible-registration-c1",
+  "build": "2026-10-09-1242-A1",
+  "bundle": "riggo-app.c8fe707cba6d.js",
+  "css": "riggo-app.85bcb7b21566.css",
   "schema": "12.3.7-stale-run-compat+atomic-reset-run-token+c4-no-cross-run-merge",
-  "stabilization": "Preserves all 12.3.6 UX fixes; same-run v2/v3 compatibility; missing/different run blocked; stale outbox discarded with server-wins adoption and no cross-run merge.",
-  "operational_bundle": "riggo-1236-operational.ecf58ba518af.js",
-  "field_integrity_bundle": "riggo-1217-field-integrity.ea49ec55f6bc.js",
-  "move_intelligence_bundle": "riggo-123-move-intelligence.79811e859444.js",
-  "field_ux_bundle": "riggo-1237-field-ux.1b6be3b11202.js"
+  "stabilization": "Accessible registration across the app: explicit load actions, audited last-event corrections, focus continuity, persistent labels and save status, keyboard dialogs, compact mobile navigation, resource disclosures and contextual help. Original transport/plan/evidence/C4/run/reset/report rules preserved. No database schema changes.",
+  "operational_bundle": "riggo-1236-operational.94deddbef72a.js",
+  "field_integrity_bundle": "riggo-1217-field-integrity.c37a638e1ce1.js",
+  "move_intelligence_bundle": "riggo-123-move-intelligence.e40084544216.js",
+  "field_ux_bundle": "riggo-1237-field-ux.c9449a214c6a.js",
+  "baseline_release": "12.4.1-field-corrections-c1",
+  "sync_policy": {
+    "retry_seconds": [
+      15,
+      30,
+      60,
+      120,
+      240,
+      300
+    ],
+    "background_read_min_seconds": 30,
+    "permanent_rejection": "pause-and-retain-local-work"
+  },
+  "evidence_bundle": "riggo-124.0850d8ed6990.js",
+  "readability_css": "riggo-124.c9fb3b86ea11.css",
+  "local_evidence_db": "riggo-media-v124",
+  "operational_end_policy": "exact-physical-completion-or-confirmed-end; exact-reported-100-pauses-pending-review; audited-reopening",
+  "interface_policy": "same registration authority; append-only correction of current last event in same period and run; per-load duplicate guard; no claim of live backend validation",
+  "interface_bundle": "riggo-1242.fc3842f76614.js",
+  "interface_css": "riggo-1242.eefa95f93c3a.css"
 }

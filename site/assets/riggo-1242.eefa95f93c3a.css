@@ -1,0 +1,107 @@
+/* Natural document scrolling on touch, desktop and short viewports. */
+html { height:auto!important;max-height:none!important;overflow-y:auto!important;overscroll-behavior-y:auto!important; }
+body[data-riggo-route] { height:auto!important;max-height:none!important;min-height:100vh!important;min-height:100dvh!important;overflow-x:clip!important;overflow-y:visible!important;overscroll-behavior-y:auto!important; }
+body[data-riggo-route] .app-shell { height:auto!important;max-height:none!important;min-height:100vh!important;min-height:100dvh!important;overflow:visible!important; }
+body[data-riggo-route] .main { height:auto!important;max-height:none!important;min-height:0!important;overflow:visible!important; }
+body[data-riggo-route] #app { max-height:none!important;overflow:visible!important; }
+body[data-riggo-route] .v3-login.v4-login.v43-login.v5-login.v51-login.v52-login,
+body[data-riggo-route] .v5-home.v52-home { height:auto!important;max-height:none!important;min-height:calc(100dvh - 72px)!important;overflow:visible!important; }
+body[data-riggo-route] .v52-home-content { height:auto!important;min-height:calc(100dvh - 72px)!important; }
+.riggo1241-plan-note { margin:0 0 20px;color:var(--r124-muted);font-size:.875rem;line-height:1.5; }
+.riggo1241-load-detail { margin-top:10px;padding-top:10px;border-top:1px solid var(--r124-line);font-size:.875rem;color:#c4d2dc;line-height:1.5; }
+.riggo1241-transport-summary b { margin-bottom:4px; }
+/* Drawing alone owns its touch gestures. The rest of the document pans normally. */
+body[data-riggo-route] .main { touch-action:auto; }
+.signature canvas { touch-action:none; }
+@media(max-width:760px) {
+  body[data-riggo-route] .main { padding-bottom:calc(100px + env(safe-area-inset-bottom))!important; }
+  body[data-riggo-route="login"] .main,body[data-riggo-route="home"] .main { padding:0!important; }
+  .riggo1241-plan-note { font-size:.875rem; }
+}
+
+.v3-exec-footer { position:static!important;margin-block:20px 0!important; }
+/* Shared UI, 12.4.2: retain the industrial identity and shorten the path to work. */
+.riggo-ui-sr { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0; }
+body[data-riggo-ui] #app .btn,body[data-riggo-ui] #sheetRoot .btn,
+body[data-riggo-ui] #app label.btn,body[data-riggo-ui] .riggo-quarter-actions button { min-height:44px!important;font-size:.875rem!important;line-height:1.4!important;padding:10px 14px!important;white-space:normal!important; }
+body[data-riggo-ui] #app .field,body[data-riggo-ui] #sheetRoot .field { min-height:44px!important;min-width:0!important;width:100%; }
+body[data-riggo-ui] .top-actions .btn { min-height:44px!important; }
+.riggo-field-label { display:grid;gap:6px;min-width:0;font-size:.875rem;color:#c4d2dc;line-height:1.4; }
+.riggo-field-label>span { font-size:.875rem;overflow-wrap:anywhere; }
+body[data-riggo-ui] .checkbox,body[data-riggo-ui] .riggo-checkbox-label { display:flex;align-items:center;gap:10px;min-height:44px;font-size:.875rem!important;cursor:pointer; }
+body[data-riggo-ui] .checkbox input,body[data-riggo-ui] .riggo-checkbox-label input { flex:0 0 20px;width:20px!important;height:20px; }
+.riggo-nav-picker { display:none; }
+body[data-riggo-ui] summary { min-height:44px;padding:12px 0;font-size:.875rem;line-height:1.4;color:#c4d2dc;cursor:pointer; }
+body[data-riggo-ui] details[open]>summary { color:#f0f6fa; }
+.riggo-move-summary,.riggo-load-summary,.riggo-plan-reference { border-block-end:1px solid var(--r124-line);margin-block:0 12px; }
+.riggo-plan-reference p { margin:0 0 14px;max-width:80ch;font-size:.875rem;color:#c4d2dc;line-height:1.6; }
+.riggo-move-summary>.grid,.riggo-load-summary>.grid { margin-block:8px 16px; }
+.riggo-move-tools { min-width:0; }
+.riggo-move-tools summary { padding:10px 14px;border:1px solid var(--r124-line);border-radius:6px; }
+.riggo-move-tools-list { display:flex;gap:8px;flex-wrap:wrap;padding-block-start:8px; }
+body[data-riggo-ui] .v3-exec-title>.row:has(.riggo-move-tools) { display:flex!important;flex-wrap:wrap!important;gap:8px!important; }
+.riggo-load-actions { display:grid;gap:8px;min-width:170px;align-content:center; }
+.riggo-load-status { display:inline-block;margin-block-start:8px;font-size:.875rem;color:#c4d2dc;line-height:1.4; }
+.riggo-load-status.loaded { color:#ffda8b; }.riggo-load-status.transit { color:#a8ceff; }.riggo-load-status.positioned { color:#8fe0b1; }
+body[data-riggo-ui] #app .riggo-load-undo { padding:8px 10px!important;min-height:44px!important;color:#c4d2dc; }
+body[data-riggo-ui] .v3-load-row b,body[data-riggo-ui] .v3-load-row small { overflow-wrap:anywhere;white-space:normal!important; }
+body[data-riggo-ui] .v3-resource { border:0!important;border-radius:0!important;background:transparent!important;border-bottom:1px solid var(--r124-line)!important;margin-block:0 16px!important; }
+body[data-riggo-ui] .v3-resource-head { padding:0!important;gap:16px;flex-wrap:wrap;background:transparent!important; }
+body[data-riggo-ui] .v3-resource-body { padding:0!important; }
+.riggo-resource-note { font-size:.875rem;line-height:1.5;color:#c4d2dc;margin:0 0 12px; }
+.riggo-resource-fields { margin-block:16px; }
+body[data-riggo-ui] .v3-resource-body .editor-head,body[data-riggo-ui] .v43-cell-label { display:none!important; }
+body[data-riggo-ui] .v3-resource-body .editor-row { display:grid!important;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))!important;gap:12px!important;padding:16px 0!important;border:0!important;border-block-start:1px solid var(--r124-line)!important;border-radius:0!important;background:transparent!important; }
+body[data-riggo-ui] .v43-data-cell { display:block!important;min-width:0!important;grid-column:auto!important; }
+body[data-riggo-ui] .v3-resource-body .field:disabled { min-height:44px!important;font-size:1rem!important;padding:8px 10px!important;border:1px solid #29404f!important;background:#0a151e!important;color:#c4d2dc!important;font-weight:400!important; }
+.riggo-help-panel { border-block:1px solid var(--r124-line);padding:20px 0;margin-block-end:24px; }
+.riggo-help-panel h2 { font-size:1.25rem;margin:0 0 12px; }.riggo-help-panel p { max-width:75ch;color:#c4d2dc;line-height:1.6;font-size:1rem;margin:0 0 16px; }
+body[data-riggo-ui] .v3-report-footer { position:static!important; }
+body[data-riggo-ui] .v61-validation-banner { color:#ffd2d5!important;background:#351e25!important;line-height:1.6; }
+body[data-riggo-ui] .v3-resource-head .checkbox { white-space:normal; }
+body[data-riggo-ui] #app .riggo-nav-picker .field { width:100%; }
+@media(max-width:800px) {
+ body[data-riggo-ui] .main { padding:16px 16px calc(24px + env(safe-area-inset-bottom))!important; }
+ body[data-riggo-route="login"] .main,body[data-riggo-route="home"] .main { padding:0!important; }
+ body[data-riggo-ui] .riggo-nav-picker { display:grid;grid-template-columns:90px minmax(0,1fr);gap:10px;align-items:center;font-size:.875rem;line-height:1.4;color:#c4d2dc;margin-block:12px; }
+ body[data-riggo-ui] .v3-stagebar:has(+*) { margin-block:12px!important; }
+ body[data-riggo-ui] .riggo-nav-picker:has(#riggoStagePicker)+.v3-stagebar,
+ body[data-riggo-ui] .riggo-nav-picker:has(#riggoReportPicker)+.v3-report-nav,
+ body[data-riggo-ui] .riggo-nav-picker:has(#riggoPlanPicker)+.side-nav { display:none!important; }
+ body[data-riggo-ui] .v3-load-row { grid-template-columns:minmax(0,1fr) minmax(120px,.65fr)!important;gap:12px!important;padding:14px 0!important; }
+ .riggo-load-actions { min-width:0; }
+ body[data-riggo-ui] #app .load-state { min-width:0!important;width:100%;padding:10px!important; }
+ body[data-riggo-ui] .v3-resource-body .editor-row { grid-template-columns:minmax(0,1fr)!important;gap:14px!important; }
+ body[data-riggo-ui] .v43-load-scope-strip .riggo1241-load-detail { grid-column:1/-1; }
+ body[data-riggo-ui] .v3-exec-title { margin-block-end:14px!important; }
+ body[data-riggo-ui] .v3-exec-title>.row { width:100%; }
+ body[data-riggo-ui] .v3-stats>div { min-width:0; }
+ body[data-riggo-ui] .v3-stats span { line-height:1.4;white-space:normal; }
+ body[data-riggo-ui] .sheet { padding:20px!important; }
+}
+@media(max-width:350px) { body[data-riggo-ui] .v3-load-row { grid-template-columns:minmax(0,1fr)!important; }.riggo-load-actions { grid-template-columns:minmax(0,1fr); } }
+@media(prefers-reduced-motion:reduce) { .riggo-help-panel,.riggo-load-actions { transition:none; } }
+@media(forced-colors:active) { body[data-riggo-ui] :focus-visible { outline:3px solid Highlight!important; }.riggo-load-status { color:CanvasText!important; }.riggo-move-tools summary { border-color:ButtonText; } }
+@media print { .riggo-help-panel,.riggo-nav-picker,.riggo-ui-sr { display:none!important; } }
+/* Corrections from the joint desktop/mobile review. */
+body[data-riggo-ui] #app button,body[data-riggo-ui] #sheetRoot button { min-height:44px!important; }
+body[data-riggo-ui] #app .future-toggle,body[data-riggo-ui] #app .v3-load-day-toggle { font-size:.875rem!important;line-height:1.4!important; }
+body[data-riggo-ui] #app button[aria-busy=true] { opacity:.7;cursor:progress; }
+body[data-riggo-ui] .v106-tabs button { flex:1 1 auto!important;min-width:max-content!important;width:auto!important;padding:12px 16px!important; }
+body[data-riggo-ui] .online-sync { width:auto!important;min-width:0!important;max-width:100%!important;white-space:normal!important;overflow:visible!important;line-height:1.5!important; }
+body[data-riggo-ui] .riggo1217-save-state { font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;max-width:100%!important; }
+.riggo-plan-resource { min-width:0;border-block-end:1px solid var(--r124-line); }
+body[data-riggo-ui] .riggo-plan-resource>.panel { border:0!important;background:transparent!important;border-radius:0!important;padding:12px 0 20px!important;box-shadow:none!important; }
+.riggo-plan-resource>summary { font-weight:600; }
+body[data-riggo-ui] .riggo-plan-resource .editor-head { display:none!important; }
+body[data-riggo-ui] .riggo-plan-resource .editor-row { display:grid!important;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))!important;gap:12px!important;border:0!important;border-top:1px solid var(--r124-line)!important;border-radius:0!important;background:transparent!important;padding:16px 0!important; }
+.riggo-ops-tools { display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin-block:16px; }
+.riggo-ops-tools>label { flex:1 1 180px; }.riggo-ops-note { flex-basis:100%;margin:0;font-size:.875rem;line-height:1.6;color:#c4d2dc;max-width:75ch; }
+.riggo-ops-viewport { width:100%;overflow:auto; }.riggo-ops-viewport .f0065-wrap { margin-inline:0!important; }
+.riggo-ops-page-inactive { display:none!important; }
+@media(max-width:800px) { body[data-riggo-ui] .riggo-plan-resource .editor-row { grid-template-columns:minmax(0,1fr)!important; }.riggo-ops-tools>.btn { flex:1 1 140px; } }
+@media print { .riggo-ops-tools { display:none!important; }.riggo-ops-viewport { overflow:visible!important;width:auto!important; }.riggo-ops-viewport .f0065-wrap { zoom:1!important; }.riggo-ops-page-inactive { display:block!important; } }
+/* Preserve whole connection labels and the OPS's real paper width. */
+body[data-riggo-ui] .online-sync { flex:0 0 auto!important;min-width:max-content!important;max-width:none!important;white-space:nowrap!important;overflow-wrap:normal!important;word-break:normal!important; }
+body[data-riggo-ui] #app .riggo-ops-viewport .f0065-wrap { width:max-content!important;max-width:none!important;overflow:visible!important; }
+@media print { body[data-riggo-ui] #app .riggo-ops-viewport .f0065-wrap { width:auto!important;zoom:1!important; } }

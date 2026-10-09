@@ -1,6 +1,6 @@
 # Architecture
 
-RigGO is a browser application served as static files. The browser authenticates with Supabase and calls its database API, RPC functions, and Storage directly. No application server or Cloudflare Worker code is present in this repository.
+RigGO 12.4.1 is a browser application served as static files. The browser authenticates with Supabase and calls its database API, RPC functions, and Storage directly. No application server or Cloudflare Worker code is present in this repository.
 
 ```mermaid
 flowchart TD
@@ -16,11 +16,11 @@ flowchart TD
 | File | Role |
 | --- | --- |
 | `site/index.html` | Page shell, inline application logic and configuration, and ordered script loading. |
-| `site/assets/riggo-app.8fd9790e3793.js` | Move data, planning, Daily reports, and C4 execution synchronization. |
-| `site/assets/riggo-1236-operational.ecf58ba518af.js` | Operational controls. |
-| `site/assets/riggo-1217-field-integrity.ea49ec55f6bc.js` | Field checks and UI behavior. |
-| `site/assets/riggo-123-move-intelligence.79811e859444.js` | Move Intelligence and reporting views. |
-| `site/assets/riggo-1237-field-ux.1b6be3b11202.js` | Field UX and Reset interactions. |
+| `site/assets/riggo-app.7977783ec134.js` | Move data, planning, Daily reports, and C4 execution synchronization. |
+| `site/assets/riggo-1236-operational.94deddbef72a.js` | Operational controls. |
+| `site/assets/riggo-1217-field-integrity.a63b4b30cfbb.js` | Field checks and UI behavior. |
+| `site/assets/riggo-123-move-intelligence.e40084544216.js` | Move Intelligence and reporting views. |
+| `site/assets/riggo-1237-field-ux.60bb436fb5e5.js` | Field UX and Reset interactions. |
 | `site/sw.js`, `site/_headers`, `site/version.json` | Offline caching, cache headers, and release metadata. |
 
 The bundles and inline scripts are release files. Their load order matters. The Service Worker caches assets and has a network-first navigation fallback; IndexedDB stores pending application data and is managed by the application code.
@@ -47,4 +47,4 @@ Reset moves an active Move back to ready while retaining its Plan and establishi
 
 ## External dependencies
 
-The browser loads Supabase JS from jsDelivr using `@2`. It also uses CDN libraries for PDF and canvas work, including html2pdf.js 0.10.1, html2canvas 1.4.1, and jsPDF 2.5.1. Authentication, database, and file storage depend on Supabase. The actual hosting project settings, database configuration, and any server-side email or Edge Function implementations are outside this repository.
+The 12.4.1 package self-hosts Supabase JS 2.117.3, html2pdf.js 0.10.1, html2canvas 1.4.1 and jsPDF 2.5.1. Their npm tarball integrity was verified before extraction; browser SRI and provenance records are in `site/assets/vendor/`. Startup and PDF rendering do not require a CDN. Authentication, database and file storage still require the existing Supabase project. See `site/version.json` for the current hashed asset names and `docs/OPERATION_RULES.md` for hourly plan and transport definitions.

@@ -1,3 +1,37 @@
+/* RigGO 12.4 · durable retry policy; no network or data deletion. */
+(()=>{
+  'use strict';
+  const BASE_MS=15000, MAX_MS=300000;
+  const blocked=item=>!!item?.blockedCode&&!item?.retryApprovedAt;
+  const due=(item,now=Date.now())=>!blocked(item)&&(Date.parse(item?.nextRetryAt||'')||0)<=now;
+  const delay=attempt=>Math.min(MAX_MS,BASE_MS*Math.pow(2,Math.min(5,Math.max(0,Number(attempt||1)-1))));
+  function transient(error){
+    if(navigator.onLine===false)return true;
+    const status=Number(error?.status||error?.statusCode||error?.code);
+    if([408,429,500,502,503,504].includes(status))return true;
+    return /failed to fetch|networkerror|network request failed|load failed|timeout|connection (?:lost|reset|refused)|offline|too many requests|rate limit|service unavailable/i.test(String(error?.message||error?.details||error?.hint||error||''));
+  }
+  function postpone(item,error){
+    item.retryAttempts=Math.min(30,Math.max(0,Number(item.retryAttempts)||0)+1);
+    item.lastAttemptAt=new Date().toISOString();
+    item.nextRetryAt=new Date(Date.now()+delay(item.retryAttempts)).toISOString();
+    item.lastError=String(error?.message||error?.details||error||'Conexión temporalmente no disponible').slice(0,220);
+    return item;
+  }
+  function clear(item){for(const key of ['blockedCode','blockedAt','retryApprovedAt','nextRetryAt','retryAttempts','lastAttemptAt','lastError'])delete item[key];return item}
+  function preserve(from,to){for(const key of ['blockedCode','blockedAt','nextRetryAt','retryAttempts','lastAttemptAt','lastError'])if(from?.[key]!=null)to[key]=from[key];return to}
+  function summary(items){
+    const now=Date.now(),out={total:items.length,due:0,blocked:0,deferred:0,nextRetryAt:null,lastError:''};
+    for(const item of items){
+      if(blocked(item)){out.blocked++;out.lastError=out.lastError||item.lastError||item.blockedCode;}
+      else if(due(item,now))out.due++;
+      else{out.deferred++;if(!out.nextRetryAt||Date.parse(item.nextRetryAt)<Date.parse(out.nextRetryAt))out.nextRetryAt=item.nextRetryAt;}
+    }
+    return out;
+  }
+  window.RigGOSyncRetry1238={blocked,due,delay,transient,postpone,clear,preserve,summary};
+})();
+
 
 /* ===== SOURCE riggo-v5.js (consolidated) ===== */
 /* RigGO 5.8 Close Flow + Validation Candidate 1
@@ -270,7 +304,7 @@ wireAdmin=function(){V5_BASE_WIRE_ADMIN();};
 /* ---------- Offline-first sync guard ---------- */
 function v5ObserveSyncBadge(){
   const badge=document.querySelector('.online-sync');if(!badge||badge.dataset.v5Observed)return;badge.dataset.v5Observed='1';
-  new MutationObserver(()=>{const t=badge.textContent||'';if(/Guardado|Online/.test(t))localStorage.removeItem(V5_PENDING_KEY)}).observe(badge,{childList:true,subtree:true,characterData:true});
+  new MutationObserver(()=>{const t=badge.textContent||'';if(/Guardado|Sincronizado|Online/.test(t))localStorage.removeItem(V5_PENDING_KEY)}).observe(badge,{childList:true,subtree:true,characterData:true});
 }
 if(V5_BASE_SAVE){
   save=function(){try{localStorage.setItem(V5_PENDING_KEY,'1')}catch(_){};return V5_BASE_SAVE();};
@@ -493,14 +527,14 @@ if(typeof wireReview==='function'){
   };
 }
 
-// Email progress graphic: same operational convention as the app — 0% at the top, 100% at the bottom.
+// Email progress graphic: conventional accumulated progress — 100% above 0%, like the app.
 if(typeof combinedChartSvg==='function'){
   combinedChartSvg=function(m,p){
-    const cv=m.plan?.curves||{rd:[],rm:[],ru:[]};
+    const cv=planCurvesAtPeriods(m,p);
     const series=[['Rig Down',[0,...(cv.rd||[])],actualSeries(m,'rd',p)],['Rig Move',[0,...(cv.rm||[])],actualSeries(m,'rm',p)],['Rig Up',[0,...(cv.ru||[])],actualSeries(m,'ru',p)]];
     const W=920,H=360,cardW=286,gap=16,top=50,plotH=245;
     let out=`<rect width="${W}" height="${H}" rx="18" fill="#f6f8fb"/><text x="28" y="28" fill="#26364b" font-family="Arial" font-size="15" font-weight="700">Plan vs Actual · Daily Progress</text><text x="892" y="28" text-anchor="end" fill="#7c899a" font-family="Arial" font-size="10">PLAN · ACTUAL</text>`;
-    series.forEach((s,si)=>{const ox=18+si*(cardW+gap),x0=ox+28,x1=ox+cardW-18,y0=top+35,y1=top+plotH,n=Math.max(2,s[1].length,s[2].length),x=i=>x0+i*(x1-x0)/(n-1),y=v=>y0+(Math.max(0,Math.min(100,Number(v)||0))/100)*(y1-y0);out+=`<rect x="${ox}" y="${top}" width="${cardW}" height="${plotH+30}" rx="14" fill="#ffffff" stroke="#dce3eb"/><text x="${ox+16}" y="${top+24}" fill="#26364b" font-family="Arial" font-size="12" font-weight="700">${s[0]}</text>`;[0,50,100].forEach(v=>out+=`<line x1="${x0}" y1="${y(v)}" x2="${x1}" y2="${y(v)}" stroke="#e4e9ef"/><text x="${x0}" y="${y(v)-4}" fill="#9aa6b5" font-family="Arial" font-size="8">${v}%</text>`);const pts=a=>(a||[]).map((v,i)=>`${x(i)},${y(v)}`).join(' ');out+=`<polyline fill="none" stroke="#1769ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="${pts(s[1])}"/><polyline fill="none" stroke="#15b77e" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round" points="${pts(s[2])}"/>`;s[2].forEach((v,i)=>out+=`<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="#15b77e"/>`)});return out;
+    series.forEach((s,si)=>{const ox=18+si*(cardW+gap),x0=ox+28,x1=ox+cardW-18,y0=top+35,y1=top+plotH,n=Math.max(2,s[1].length,s[2].length),x=i=>x0+i*(x1-x0)/(n-1),y=v=>y1-(Math.max(0,Math.min(100,Number(v)||0))/100)*(y1-y0);out+=`<rect x="${ox}" y="${top}" width="${cardW}" height="${plotH+30}" rx="14" fill="#ffffff" stroke="#dce3eb"/><text x="${ox+16}" y="${top+24}" fill="#26364b" font-family="Arial" font-size="12" font-weight="700">${s[0]}</text>`;[0,50,100].forEach(v=>out+=`<line x1="${x0}" y1="${y(v)}" x2="${x1}" y2="${y(v)}" stroke="#e4e9ef"/><text x="${x0}" y="${y(v)-4}" fill="#9aa6b5" font-family="Arial" font-size="8">${v}%</text>`);const pts=a=>(a||[]).map((v,i)=>`${x(i)},${y(v)}`).join(' ');out+=`<polyline fill="none" stroke="#1769ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" points="${pts(s[1])}"/><polyline fill="none" stroke="#15b77e" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round" points="${pts(s[2])}"/>`;s[2].forEach((v,i)=>out+=`<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="#15b77e"/>`)});return out;
   };
 }
 
@@ -1004,7 +1038,7 @@ function v61ClearValidation(){document.querySelectorAll('.v61-required-error').f
 function v61ShowValidation(missing){
   v61ClearValidation();if(!missing.length)return false;
   const host=document.querySelector('.v3-report-main')||document.querySelector('.v3-report-body')||document.querySelector('section');
-  const banner=document.createElement('div');banner.className='v61-validation-banner';banner.textContent='Completa antes de continuar: '+missing.map(x=>x.label).join(', ')+'.';
+  const banner=document.createElement('div');banner.className='v61-validation-banner';banner.id='riggoValidationError';banner.setAttribute('role','alert');banner.setAttribute('aria-atomic','true');banner.textContent='Completa antes de continuar: '+missing.map(x=>x.label).join(', ')+'.';
   const head=document.querySelector('.v3-report-head');if(head)head.insertAdjacentElement('afterend',banner);else host?.prepend(banner);
   const ids=missing.flatMap(x=>x.ids||[]);ids.forEach(id=>el(id)?.classList.add('v61-required-error'));
   const first=ids.map(el).find(Boolean);if(first){first.scrollIntoView({behavior:'smooth',block:'center'});if(first.tagName!=='CANVAS')setTimeout(()=>{try{first.focus({preventScroll:true})}catch(_){}},180)}
@@ -1034,40 +1068,40 @@ function v61EmailHtml(m,p,c,{forSend=false}={}){
  const phases=[['Rig Down','rd',plan.rd,rep.rd],['Rig Move','rm',plan.rm,rep.rm],['Rig Up','ru',plan.ru,rep.ru]];
  const worst=phases.slice().sort((a,b)=>delta(a[3],a[2])-delta(b[3],b[2]))[0],worstDelta=delta(worst[3],worst[2]);
  const insight=worstDelta<0?`Mayor desviación: ${worst[0]}, ${Math.abs(worstDelta)} pp por debajo del plan.${worst[1]==='rm'?` ${totalMoved} de ${totalLoads} cargas movilizadas.`:''}${String(c.progressNotes?.[worst[1]]||'').trim()?` ${String(c.progressNotes[worst[1]]).trim()}`:''}`:'Ejecución alineada o por encima del plan en las tres fases.';
- const section=(n,title)=>`<tr><td style="padding:20px 24px 8px"><div style="font-size:11px;line-height:14px;font-weight:700;letter-spacing:.08em;color:#667085;text-transform:uppercase">${n?`${n}. `:''}${esc(title)}</div></td></tr>`;
+ const section=(n,title)=>`<tr><td style="padding:20px 24px 8px"><div style="font-size:12px;line-height:14px;font-weight:700;letter-spacing:.08em;color:#667085;text-transform:uppercase">${n?`${n}. `:''}${esc(title)}</div></td></tr>`;
  const preview=(text,max)=>{const a=v61Bullets(text);return{count:a.length,html:a.length?a.slice(0,max).map(x=>`<div style="margin:3px 0;color:#344054;font-size:13px;line-height:18px">• ${esc(x)}</div>`).join('')+(a.length>max?`<div style="margin-top:5px;color:#667085;font-size:12px;line-height:17px;font-weight:700">+ ${a.length-max} adicionales en OPS</div>`:''):'<div style="color:#667085;font-size:13px">Sin actividades registradas.</div>'}};
  const origin=preview(c.originOps,4),destination=preview(c.destinationOps,4),next=preview(c.next24,5);
- const phaseRows=phases.map(([label,key,pv,av])=>{const d=delta(av,pv),tone=d>=0?['#e9f8f1','#137a53']:d>=-5?['#fff7e6','#9a6700']:['#fff0f0','#b42318'];return `<tr><td style="padding:10px 12px;border-bottom:1px solid #e7ebef;font-size:13px;font-weight:700;color:#17202a">${label}</td><td align="center" style="padding:10px 8px;border-bottom:1px solid #e7ebef;font-size:13px;color:#475467">${fmtPct(pv)}</td><td align="center" style="padding:10px 8px;border-bottom:1px solid #e7ebef;font-size:15px;font-weight:800;color:#17202a">${fmtPct(av)}</td><td align="center" style="padding:7px 8px;border-bottom:1px solid #e7ebef"><span style="display:inline-block;padding:4px 8px;background:${tone[0]};color:${tone[1]};font-size:11px;font-weight:800;border-radius:10px">${d>0?'+':''}${d} pp</span></td></tr>`}).join('');
+ const phaseRows=phases.map(([label,key,pv,av])=>{const d=delta(av,pv),tone=d>=0?['#e9f8f1','#137a53']:d>=-5?['#fff7e6','#9a6700']:['#fff0f0','#b42318'];return `<tr><td style="padding:10px 12px;border-bottom:1px solid #e7ebef;font-size:13px;font-weight:700;color:#17202a">${label}</td><td align="center" style="padding:10px 8px;border-bottom:1px solid #e7ebef;font-size:13px;color:#475467">${fmtPct(pv)}</td><td align="center" style="padding:10px 8px;border-bottom:1px solid #e7ebef;font-size:15px;font-weight:800;color:#17202a">${fmtPct(av)}</td><td align="center" style="padding:7px 8px;border-bottom:1px solid #e7ebef"><span style="display:inline-block;padding:4px 8px;background:${tone[0]};color:${tone[1]};font-size:12px;font-weight:800;border-radius:10px">${d>0?'+':''}${d} pp</span></td></tr>`}).join('');
  const physical=[['Rig',rep.rd,Math.round(r.pct),rep.ru]];if(m.scope?.mini)physical.push(['Mini Camp',c.scope?.mini?.down||0,Math.round(mi.pct),c.scope?.mini?.up||0]);if(m.scope?.camp)physical.push(['Campamento',c.scope?.camp?.down||0,Math.round(ca.pct),c.scope?.camp?.up||0]);
  const physicalRows=physical.map(x=>`<tr><td style="padding:8px 10px;border-bottom:1px solid #edf0f3;font-size:12px;font-weight:700">${esc(x[0])}</td><td align="center" style="padding:8px;border-bottom:1px solid #edf0f3;font-size:12px">${x[1]}%</td><td align="center" style="padding:8px;border-bottom:1px solid #edf0f3;font-size:12px">${x[2]}%</td><td align="center" style="padding:8px;border-bottom:1px solid #edf0f3;font-size:12px">${x[3]}%</td></tr>`).join('');
- const transport=[['Rig',r],['Mini Camp',mi],['Campamento',ca],['Operador / Terceros',th]].filter(([,x],i)=>i===0||num(x.total)>0),transportRows=transport.map(([label,x])=>`<tr><td style="padding:8px 10px;border-bottom:1px solid #edf0f3;font-size:12px;font-weight:700">${esc(label)}</td><td style="padding:8px 10px;border-bottom:1px solid #edf0f3;font-size:12px;color:#344054"><b>${x.moved}</b> / ${x.total} movilizadas · <b>${x.pos}</b> posicionadas</td></tr>`).join('');
- const sched=(label,count,items,color,bg,max)=>`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom:8px;background:${bg};border:1px solid #e5e9ee"><tr><td style="padding:10px 12px"><div style="font-size:13px;font-weight:800;color:${color}">${label} · ${count}</div>${count?items.slice(0,max).map(x=>`<div style="font-size:12px;line-height:17px;color:#344054;margin-top:3px">• ${esc(x)}</div>`).join('')+(count>max?`<div style="font-size:11px;color:#667085;font-weight:700;margin-top:4px">+ ${count-max} adicionales en OPS</div>`:''):`<div style="font-size:12px;color:#667085;margin-top:3px">Sin registros.</div>`}</td></tr></table>`;
- const milestones=(c.milestones||[]).map(x=>`<tr><td style="padding:8px 10px;border-bottom:1px solid #edf0f3;font-size:12px;font-weight:700">${esc(x.name)}</td><td style="padding:8px;border-bottom:1px solid #edf0f3;font-size:11px;color:#667085">${fmtDate(x.base,true)}</td><td style="padding:8px;border-bottom:1px solid #edf0f3;font-size:11px;color:#344054">${x.forecast?fmtDate(x.forecast,true):'—'}</td><td style="padding:8px;border-bottom:1px solid #edf0f3;font-size:11px;font-weight:700">${x.actual?fmtDate(x.actual,true):'—'}</td></tr>`).join('');
- const flatEvents=(c.flatEvents||[]).slice(0,4).map(e=>{const t=FLAT_TYPES.find(x=>x.id===e.type),detail=eventDetailSummary(e),treat=e.commercial||'Por definir';return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:7px;border:1px solid #f0d3d5;background:#fff8f8"><tr><td width="5" style="width:5px;background:#c92a36;font-size:1px">&nbsp;</td><td style="padding:9px 11px"><div style="font-size:13px;font-weight:800;color:#9f1d29">${round(eventHours(e),2)} h · ${esc(t?.label||e.type)}</div><div style="font-size:11px;line-height:16px;color:#475467;margin-top:2px">${e.responsibility?`Responsabilidad: ${esc(e.responsibility)} · `:''}Tratamiento: ${esc(treat)}${e.affected?` · Afecta: ${esc(e.affected)}`:''}</div>${detail?`<div style="font-size:12px;line-height:17px;color:#344054;margin-top:3px">${esc(detail)}</div>`:''}</td></tr></table>`}).join('');
+ const transport=[['Rig',r],['Mini Camp',mi],['Campamento',ca],['Operador / Terceros',th]].filter(([,x],i)=>i===0||num(x.total)>0),transportRows=transport.map(([label,x])=>`<tr><td style="padding:8px 10px;border-bottom:1px solid #edf0f3;font-size:12px;font-weight:700">${esc(label)}</td><td style="padding:8px 10px;border-bottom:1px solid #edf0f3;font-size:12px;color:#344054"><b>${x.loaded}</b> / ${x.total} cargadas · <b>${x.moved}</b> movilizadas · <b>${x.pos}</b> posicionadas</td></tr>`).join('');
+ const sched=(label,count,items,color,bg,max)=>`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom:8px;background:${bg};border:1px solid #e5e9ee"><tr><td style="padding:10px 12px"><div style="font-size:13px;font-weight:800;color:${color}">${label} · ${count}</div>${count?items.slice(0,max).map(x=>`<div style="font-size:12px;line-height:17px;color:#344054;margin-top:3px">• ${esc(x)}</div>`).join('')+(count>max?`<div style="font-size:12px;color:#667085;font-weight:700;margin-top:4px">+ ${count-max} adicionales en OPS</div>`:''):`<div style="font-size:12px;color:#667085;margin-top:3px">Sin registros.</div>`}</td></tr></table>`;
+ const milestones=(c.milestones||[]).map(x=>`<tr><td style="padding:8px 10px;border-bottom:1px solid #edf0f3;font-size:12px;font-weight:700">${esc(x.name)}</td><td style="padding:8px;border-bottom:1px solid #edf0f3;font-size:12px;color:#667085">${fmtDate(x.base,true)}</td><td style="padding:8px;border-bottom:1px solid #edf0f3;font-size:12px;color:#344054">${x.forecast?fmtDate(x.forecast,true):'—'}</td><td style="padding:8px;border-bottom:1px solid #edf0f3;font-size:12px;font-weight:700">${x.actual?fmtDate(x.actual,true):'—'}</td></tr>`).join('');
+ const flatEvents=(c.flatEvents||[]).slice(0,4).map(e=>{const t=FLAT_TYPES.find(x=>x.id===e.type),detail=eventDetailSummary(e),treat=e.commercial||'Por definir';return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:7px;border:1px solid #f0d3d5;background:#fff8f8"><tr><td width="5" style="width:5px;background:#c92a36;font-size:1px">&nbsp;</td><td style="padding:9px 11px"><div style="font-size:13px;font-weight:800;color:#9f1d29">${round(eventHours(e),2)} h · ${esc(t?.label||e.type)}</div><div style="font-size:12px;line-height:16px;color:#475467;margin-top:2px">${e.responsibility?`Responsabilidad: ${esc(e.responsibility)} · `:''}Tratamiento: ${esc(treat)}${e.affected?` · Afecta: ${esc(e.affected)}`:''}</div>${detail?`<div style="font-size:12px;line-height:17px;color:#344054;margin-top:3px">${esc(detail)}</div>`:''}</td></tr></table>`}).join('');
  const chart=forSend?`<img src="cid:riggo-progress" width="632" alt="Plan vs Actual" style="display:block;width:100%;max-width:632px;height:auto;border:0;margin:0 auto">`:`<svg id="mailCombinedChart" viewBox="0 0 660 240" style="display:block;width:100%;height:auto;max-width:660px;margin:0 auto"></svg>`;
- const photos=(c.photos||[]).slice(0,2),captions=(c.photoCaptions||[]),photoHtml=photos.length?`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr>${photos.map((x,i)=>`<td width="50%" valign="top" style="padding:${i?'0 0 0 5px':'0 5px 0 0'}"><img src="${forSend?`cid:photo-${i+1}`:x}" width="280" height="180" alt="Registro fotográfico ${i+1}" style="display:block;width:280px;max-width:100%;height:180px;border:0;background:#eef1f4"><div style="font-size:11px;line-height:15px;color:#667085;margin-top:5px">${esc(captions[i]||`Foto ${i+1}`)}</div></td>`).join('')}</tr></table>`:'<div style="font-size:13px;color:#667085">Sin fotografías registradas.</div>';
+ const photos=(c.photos||[]).slice(0,2),captions=(c.photoCaptions||[]),photoHtml=photos.length?`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr>${photos.map((x,i)=>`<td width="50%" valign="top" style="padding:${i?'0 0 0 5px':'0 5px 0 0'}"><img src="${forSend?`cid:photo-${i+1}`:x}" width="280" height="180" alt="Registro fotográfico ${i+1}" style="display:block;width:280px;max-width:100%;height:180px;border:0;background:#eef1f4"><div style="font-size:12px;line-height:15px;color:#667085;margin-top:5px">${esc(captions[i]||`Foto ${i+1}`)}</div></td>`).join('')}</tr></table>`:'<div style="font-size:13px;color:#667085">Sin fotografías registradas.</div>';
  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;padding:0;background:#f3f5f7"><tr><td align="center" style="padding:18px 6px"><table role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" style="width:680px;max-width:680px;background:#ffffff;border:1px solid #dfe5ea">
- <tr><td style="padding:16px 24px 2px"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td valign="middle"><a href="${APP_URL}" target="_blank" style="text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:24px;font-weight:900;letter-spacing:-.8px"><span style="color:#0aa59a">Rig</span><span style="color:#17202a">GO</span></a><div style="font-family:Arial,Helvetica,sans-serif;font-size:8px;line-height:11px;font-weight:700;letter-spacing:.12em;color:#7a8795;text-transform:uppercase;margin-top:3px">Operations Excellence</div></td></tr></table></td></tr>
+ <tr><td style="padding:16px 24px 2px"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td valign="middle"><a href="${APP_URL}" target="_blank" style="text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:24px;font-weight:900;letter-spacing:-.8px"><span style="color:#0aa59a">Rig</span><span style="color:#17202a">GO</span></a><div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:11px;font-weight:700;letter-spacing:.12em;color:#7a8795;text-transform:uppercase;margin-top:3px">Operations Excellence</div></td></tr></table></td></tr>
  <tr><td style="padding:22px 24px 10px;border-left:5px solid #32c56b"><div style="font-size:23px;line-height:29px;font-weight:800;color:#17202a">Buen día,</div><div style="font-size:13px;line-height:19px;color:#475467;margin-top:4px">Daily Move Update · Rig <b>${esc(m.meta.rig)}</b> · Día ${p.index}</div></td></tr>
- <tr><td style="padding:8px 24px 16px"><div style="font-size:18px;line-height:24px;font-weight:800;color:#17202a">${esc(m.meta.origin)} → ${esc(m.meta.destination)}</div><div style="font-size:12px;line-height:18px;color:#667085;margin-top:3px">${fmtDate(p.start,true)} → ${fmtDate(p.end,true)}</div><div style="font-size:11px;line-height:17px;color:#667085;margin-top:3px">Release ${fmtDate(m.exec.actualRelease,true)} · ${num(m.meta.distanceKm)} km · ${esc(m.meta.moveCompany||'—')} · Corte ${esc(p.cutoffTime||'06:00')}</div></td></tr>
- ${section(1,'Plan vs Actual')}
- <tr><td style="padding:0 24px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #dfe5ea"><tr><th align="left" style="padding:9px 12px;background:#f5f7f9;font-size:10px;color:#667085">FASE</th><th style="padding:9px 8px;background:#f5f7f9;font-size:10px;color:#667085">PLAN</th><th style="padding:9px 8px;background:#f5f7f9;font-size:10px;color:#667085">ACTUAL</th><th style="padding:9px 8px;background:#f5f7f9;font-size:10px;color:#667085">VAR.</th></tr>${phaseRows}</table><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:9px;background:#eef4ff"><tr><td style="padding:10px 12px;font-size:12px;line-height:18px;color:#24436b"><b>Resumen:</b> ${esc(insight)}</td></tr></table></td></tr>
+ <tr><td style="padding:8px 24px 16px"><div style="font-size:18px;line-height:24px;font-weight:800;color:#17202a">${esc(m.meta.origin)} → ${esc(m.meta.destination)}</div><div style="font-size:12px;line-height:18px;color:#667085;margin-top:3px">${fmtDate(p.start,true)} → ${fmtDate(p.end,true)}</div><div style="font-size:12px;line-height:17px;color:#667085;margin-top:3px">Release ${fmtDate(m.exec.actualRelease,true)} · ${num(m.meta.distanceKm)} km · ${esc(m.meta.moveCompany||'—')} · Corte ${esc(p.cutoffTime||'06:00')}</div></td></tr>
+ ${section(1,'Plan vs Actual')}<tr><td style="padding:0 24px 10px;font-size:12px;color:#475467">${enc(planClockNote(m,p))}</td></tr>
+ <tr><td style="padding:0 24px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #dfe5ea"><tr><th align="left" style="padding:9px 12px;background:#f5f7f9;font-size:12px;color:#667085">FASE</th><th style="padding:9px 8px;background:#f5f7f9;font-size:12px;color:#667085">PLAN</th><th style="padding:9px 8px;background:#f5f7f9;font-size:12px;color:#667085">ACTUAL</th><th style="padding:9px 8px;background:#f5f7f9;font-size:12px;color:#667085">VAR.</th></tr>${phaseRows}</table><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:9px;background:#eef4ff"><tr><td style="padding:10px 12px;font-size:12px;line-height:18px;color:#24436b"><b>Resumen:</b> ${esc(insight)}</td></tr></table></td></tr>
  <tr><td style="padding:14px 24px 0">${chart}</td></tr>
  ${section(2,'Operación últimas 24 Hrs')}<tr><td style="padding:0 24px"><div style="font-size:13px;font-weight:800;color:#17202a">${esc(m.meta.origin)} · ${origin.count} actividad${origin.count===1?'':'es'}</div>${origin.html}<div style="height:10px"></div><div style="font-size:13px;font-weight:800;color:#17202a">${esc(m.meta.destination)} · ${destination.count} actividad${destination.count===1?'':'es'}</div>${destination.html}</td></tr>
- ${section(3,'Avance físico y transporte')}<tr><td style="padding:0 24px"><div style="font-size:12px;font-weight:800;color:#344054;margin-bottom:6px">Avance físico por alcance</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e3e8ed"><tr><th align="left" style="padding:7px 10px;background:#f7f9fb;font-size:10px;color:#667085">ALCANCE</th><th style="padding:7px;background:#f7f9fb;font-size:10px;color:#667085">DOWN</th><th style="padding:7px;background:#f7f9fb;font-size:10px;color:#667085">MOVE</th><th style="padding:7px;background:#f7f9fb;font-size:10px;color:#667085">UP</th></tr>${physicalRows}</table><div style="font-size:12px;font-weight:800;color:#344054;margin:13px 0 6px">Transporte de cargas</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e3e8ed">${transportRows}</table></td></tr>
- ${section(4,'Control de cronograma e hitos')}<tr><td style="padding:0 24px">${sched('Adelantos',adv.length,adv,'#137a53','#f1faf5',3)}${sched('Pendientes del día',pend.length,pend,'#b42318','#fff5f5',3)}${milestones?`<div style="font-size:12px;font-weight:800;color:#344054;margin:13px 0 6px">Hitos</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e3e8ed"><tr><th align="left" style="padding:7px 10px;background:#f7f9fb;font-size:10px;color:#667085">HITO</th><th style="padding:7px;background:#f7f9fb;font-size:10px;color:#667085">PLAN BASE</th><th style="padding:7px;background:#f7f9fb;font-size:10px;color:#667085">PROYECCIÓN</th><th style="padding:7px;background:#f7f9fb;font-size:10px;color:#667085">ACTUAL</th></tr>${milestones}</table>`:''}</td></tr>
- ${section(5,'Flat Time / Desviaciones')}<tr><td style="padding:0 24px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${fs.net>0?'#fff8f0':'#f1faf5'};border:1px solid ${fs.net>0?'#f3d7b2':'#d0eadc'}"><tr><td style="padding:11px 12px;font-size:13px;color:#17202a"><b>Flat Time neto: ${round(fs.net,2)} h</b> · Trabajo efectivo Move: ${round(fs.work,2)} h</td></tr></table>${flatEvents||'<div style="font-size:12px;color:#667085;margin-top:7px">Sin Flat Time registrado.</div>'}${(c.flatEvents||[]).length>4?`<div style="font-size:11px;color:#667085;font-weight:700;margin-top:5px">+ ${(c.flatEvents||[]).length-4} eventos adicionales en OPS</div>`:''}</td></tr>
+ ${section(3,'Avance físico y transporte')}<tr><td style="padding:0 24px"><div style="font-size:12px;font-weight:800;color:#344054;margin-bottom:6px">Avance físico por alcance</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e3e8ed"><tr><th align="left" style="padding:7px 10px;background:#f7f9fb;font-size:12px;color:#667085">ALCANCE</th><th style="padding:7px;background:#f7f9fb;font-size:12px;color:#667085">DOWN</th><th style="padding:7px;background:#f7f9fb;font-size:12px;color:#667085">MOVE</th><th style="padding:7px;background:#f7f9fb;font-size:12px;color:#667085">UP</th></tr>${physicalRows}</table><div style="font-size:12px;font-weight:800;color:#344054;margin:13px 0 6px">Transporte de cargas</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e3e8ed">${transportRows}</table></td></tr>
+ ${section(4,'Control de cronograma e hitos')}<tr><td style="padding:0 24px">${sched('Adelantos',adv.length,adv,'#137a53','#f1faf5',3)}${sched('Pendientes del día',pend.length,pend,'#b42318','#fff5f5',3)}${milestones?`<div style="font-size:12px;font-weight:800;color:#344054;margin:13px 0 6px">Hitos</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e3e8ed"><tr><th align="left" style="padding:7px 10px;background:#f7f9fb;font-size:12px;color:#667085">HITO</th><th style="padding:7px;background:#f7f9fb;font-size:12px;color:#667085">PLAN BASE</th><th style="padding:7px;background:#f7f9fb;font-size:12px;color:#667085">PROYECCIÓN</th><th style="padding:7px;background:#f7f9fb;font-size:12px;color:#667085">ACTUAL</th></tr>${milestones}</table>`:''}</td></tr>
+ ${section(5,'Flat Time / Desviaciones')}<tr><td style="padding:0 24px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${fs.net>0?'#fff8f0':'#f1faf5'};border:1px solid ${fs.net>0?'#f3d7b2':'#d0eadc'}"><tr><td style="padding:11px 12px;font-size:13px;color:#17202a"><b>Flat Time neto: ${round(fs.net,2)} h</b> · Trabajo efectivo Move: ${round(fs.work,2)} h</td></tr></table>${flatEvents||'<div style="font-size:12px;color:#667085;margin-top:7px">Sin Flat Time registrado.</div>'}${(c.flatEvents||[]).length>4?`<div style="font-size:12px;color:#667085;font-weight:700;margin-top:5px">+ ${(c.flatEvents||[]).length-4} eventos adicionales en OPS</div>`:''}</td></tr>
  ${section(6,'Próximas 24 Hrs')}<tr><td style="padding:0 24px">${next.html}</td></tr>
  ${section(7,'Registro fotográfico')}<tr><td style="padding:0 24px 4px">${photoHtml}</td></tr>
- <tr><td style="padding:20px 24px 24px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f7f9"><tr><td style="padding:11px 12px;font-size:12px;line-height:18px;color:#475467">El detalle operacional completo se encuentra en el <b>OPS-F0065-S adjunto</b>.</td></tr></table><div style="font-size:13px;line-height:20px;color:#344054;margin-top:16px">Muchas gracias.</div><div style="font-size:13px;line-height:20px;color:#344054;margin-top:8px">Cordialmente,</div><div style="font-size:13px;line-height:19px;color:#17202a;font-weight:800;margin-top:5px">${esc(c.siteSupervisor||'')}</div><div style="font-size:12px;line-height:18px;color:#667085">${esc(c.siteSupervisorRole||'Rig Manager')}</div><div style="border-top:1px solid #e5e9ee;margin-top:16px;padding-top:10px;font-size:10px;line-height:15px;color:#7a8795"><a href="${APP_URL}" target="_blank" style="color:#7a8795;text-decoration:none">Powered by <span style="font-weight:900;color:#0aa59a">Rig</span><span style="font-weight:900;color:#344054">GO</span> · Operations Excellence · Nabors</a></div></td></tr>
+ <tr><td style="padding:20px 24px 24px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f7f9"><tr><td style="padding:11px 12px;font-size:12px;line-height:18px;color:#475467">El detalle operacional completo se encuentra en el <b>OPS-F0065-S adjunto</b>.</td></tr></table><div style="font-size:13px;line-height:20px;color:#344054;margin-top:16px">Muchas gracias.</div><div style="font-size:13px;line-height:20px;color:#344054;margin-top:8px">Cordialmente,</div><div style="font-size:13px;line-height:19px;color:#17202a;font-weight:800;margin-top:5px">${esc(c.siteSupervisor||'')}</div><div style="font-size:12px;line-height:18px;color:#667085">${esc(c.siteSupervisorRole||'Rig Manager')}</div><div style="border-top:1px solid #e5e9ee;margin-top:16px;padding-top:10px;font-size:12px;line-height:15px;color:#7a8795"><a href="${APP_URL}" target="_blank" style="color:#7a8795;text-decoration:none">Powered by <span style="font-weight:900;color:#0aa59a">Rig</span><span style="font-weight:900;color:#344054">GO</span> · Operations Excellence · Nabors</a></div></td></tr>
  </table></td></tr></table>`;
 }
 emailHtml=v61EmailHtml;
 
 combinedChartSvg=function(m,p){
- const cv=m.plan?.curves||{rd:[],rm:[],ru:[]},series=[['Rig Down',[0,...(cv.rd||[])],actualSeries(m,'rd',p)],['Rig Move',[0,...(cv.rm||[])],actualSeries(m,'rm',p)],['Rig Up',[0,...(cv.ru||[])],actualSeries(m,'ru',p)]];
+ const cv=planCurvesAtPeriods(m,p),series=[['Rig Down',[0,...(cv.rd||[])],actualSeries(m,'rd',p)],['Rig Move',[0,...(cv.rm||[])],actualSeries(m,'rm',p)],['Rig Up',[0,...(cv.ru||[])],actualSeries(m,'ru',p)]];
  const W=660,H=240,cardW=196,gap=12,top=42,plotH=164;let out=`<rect width="${W}" height="${H}" rx="14" fill="#f6f8fb"/><text x="18" y="24" fill="#26364b" font-family="Arial" font-size="12" font-weight="700">Plan vs Actual · Daily Progress</text><text x="642" y="24" text-anchor="end" fill="#7c899a" font-family="Arial" font-size="8">PLAN · ACTUAL</text>`;
- series.forEach((s,si)=>{const ox=18+si*(cardW+gap),x0=ox+20,x1=ox+cardW-12,y0=top+28,y1=top+plotH,n=Math.max(2,s[1].length,s[2].length),x=i=>x0+i*(x1-x0)/(n-1),y=v=>y0+(pct(v)/100)*(y1-y0);out+=`<rect x="${ox}" y="${top}" width="${cardW}" height="${plotH+20}" rx="10" fill="#ffffff" stroke="#dce3eb"/><text x="${ox+11}" y="${top+18}" fill="#26364b" font-family="Arial" font-size="9" font-weight="700">${s[0]}</text>`;[0,50,100].forEach(v=>out+=`<line x1="${x0}" y1="${y(v)}" x2="${x1}" y2="${y(v)}" stroke="#e4e9ef"/><text x="${x0}" y="${y(v)-3}" fill="#9aa6b5" font-family="Arial" font-size="6">${v}%</text>`);const pts=a=>(a||[]).map((v,i)=>`${x(i)},${y(v)}`).join(' ');out+=`<polyline fill="none" stroke="#1769ff" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" points="${pts(s[1])}"/><polyline fill="none" stroke="#15b77e" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" points="${pts(s[2])}"/>`;s[2].forEach((v,i)=>out+=`<circle cx="${x(i)}" cy="${y(v)}" r="2.7" fill="#15b77e"/>`)});return out;
+ series.forEach((s,si)=>{const ox=18+si*(cardW+gap),x0=ox+20,x1=ox+cardW-12,y0=top+28,y1=top+plotH,n=Math.max(2,s[1].length,s[2].length),x=i=>x0+i*(x1-x0)/(n-1),y=v=>y1-(pct(v)/100)*(y1-y0);out+=`<rect x="${ox}" y="${top}" width="${cardW}" height="${plotH+20}" rx="10" fill="#ffffff" stroke="#dce3eb"/><text x="${ox+11}" y="${top+18}" fill="#26364b" font-family="Arial" font-size="9" font-weight="700">${s[0]}</text>`;[0,50,100].forEach(v=>out+=`<line x1="${x0}" y1="${y(v)}" x2="${x1}" y2="${y(v)}" stroke="#e4e9ef"/><text x="${x0}" y="${y(v)-3}" fill="#9aa6b5" font-family="Arial" font-size="6">${v}%</text>`);const pts=a=>(a||[]).map((v,i)=>`${x(i)},${y(v)}`).join(' ');out+=`<polyline fill="none" stroke="#1769ff" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" points="${pts(s[1])}"/><polyline fill="none" stroke="#15b77e" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" points="${pts(s[2])}"/>`;s[2].forEach((v,i)=>out+=`<circle cx="${x(i)}" cy="${y(v)}" r="2.7" fill="#15b77e"/>`)});return out;
 };
 
 function v61PreparePhoto(dataUrl,w=1120,h=720,q=.78){return new Promise(resolve=>{if(!dataUrl){resolve('');return}const img=new Image();img.onload=()=>{try{const sw=img.naturalWidth||img.width,sh=img.naturalHeight||img.height,scale=Math.min(w/sw,h/sh),dw=sw*scale,dh=sh*scale,dx=(w-dw)/2,dy=(h-dh)/2,canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');ctx.fillStyle='#eef1f4';ctx.fillRect(0,0,w,h);ctx.drawImage(img,dx,dy,dw,dh);resolve(canvas.toDataURL('image/jpeg',q))}catch(_){resolve(dataUrl)}};img.onerror=()=>resolve(dataUrl);img.src=dataUrl})}
@@ -1099,7 +1133,7 @@ sendDailyReport=async function(m,p,c){
    const response=await v61Invoke({to,cc,subject:v61Subject(m,p),html:v61EmailDoc(m,p,emailClosure),replyTo:state.auth.email||undefined,attachments});
    const sent=nowIso();c.sentAt=sent;c.sendStatus='sent';c.messageId=response.messageId||'';c.reportPhotoCount=emailPhotos.length;c.reportHadSignature=!!c.signature;
    await SB.from('reports').update({status:'sent',provider_message_id:response.messageId||null,sent_at:sent}).eq('id',reportId);await SB.from('daily_closures').update({sent_at:sent}).eq('period_id',periodId);
-   c.photos=[];c.photoCaptions=[];c.signature='';save();if(result){result.style.color='#8ae4ad';result.textContent=`Enviado ✓ · OPS adjunto · ${emailPhotos.length} foto${emailPhotos.length===1?'':'s'} optimizada${emailPhotos.length===1?'':'s'}`}toast('Daily Move Update enviado');setTimeout(render,450);
+   save();if(result){result.style.color='#8ae4ad';result.textContent=`Enviado ✓ · OPS adjunto · ${emailPhotos.length} foto${emailPhotos.length===1?'':'s'} optimizada${emailPhotos.length===1?'':'s'}`}toast('Daily Move Update enviado');setTimeout(render,450);
  }catch(e){console.error('RigGO 6.1 report send',e);try{if(reportId)await SB.from('reports').update({status:'failed',error_message:String(e.message||e)}).eq('id',reportId)}catch(_){}if(result){result.style.color='#ffafb8';result.textContent='Error: '+String(e.message||e)}else alert('No fue posible enviar: '+e.message)}finally{v61Sending=false;if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent=c.sentAt?'Reenviar':'Enviar Daily Move Update + OPS'}}
 };
 
@@ -1116,7 +1150,7 @@ function v61Summary(items){const active=items.length,on=items.filter(x=>x.health
 function v61Agg(rows){const a=v4Aggregates(rows);return a}
 function v61Compare(rows){const n=Math.max(1,rows.length),av={plan:rows.reduce((s,x)=>s+num(x.plan),0)/n,gross:rows.reduce((s,x)=>s+num(x.gross),0)/n,net:rows.reduce((s,x)=>s+num(x.net),0)/n},max=Math.max(1,av.plan,av.gross,av.net);return `<div class="v61-panel"><div class="v61-panel-head"><div><h2>Plan vs Gross vs Net</h2><div class="sub">Promedio por Move · días</div></div></div><div class="v61-compare">${[['Plan','plan'],['Gross','gross'],['Net','net']].map(([l,k])=>`<div class="v61-compare-row ${k}"><b>${l}</b><span class="track"><i style="width:${av[k]/max*100}%"></i></span><strong>${round(av[k],1)} d</strong></div>`).join('')}</div></div>`}
 function v61CauseBars(rows){const g={};let legacy=0;for(const x of rows){if(x.move?.exec?.closures){for(const c of Object.values(x.move.exec.closures))for(const e of c.flatEvents||[]){const k=FLAT_TYPES.find(t=>t.id===e.type)?.label||e.type||'Otros';g[k]=(g[k]||0)+eventHours(e)}}else legacy+=num(x.flatHours)}if(legacy)g['Histórico sin desglose']=(g['Histórico sin desglose']||0)+legacy;const vals=Object.entries(g).sort((a,b)=>b[1]-a[1]).slice(0,7),max=Math.max(1,...vals.map(x=>x[1]));return `<div class="v61-panel"><div class="v61-panel-head"><div><h2>Flat Time por causa</h2><div class="sub">Horas netas</div></div></div><div class="v61-bars">${vals.length?vals.map(([k,v])=>`<div class="v61-bar"><span class="name">${esc(k)}</span><span class="track"><i style="width:${v/max*100}%"></i></span><strong>${round(v,1)} h</strong></div>`).join(''):'<div class="v61-live-empty">Sin Flat Time registrado.</div>'}</div></div>`}
-function v61HistoryTable(rows){const sorted=rows.slice().sort((a,b)=>new Date(b.acceptance||0)-new Date(a.acceptance||0));return `<div class="v61-panel"><div class="v61-panel-head"><div><h2>Moves finalizadas</h2><div class="sub">Histórico operacional</div></div><span class="v61-badge gray">${rows.length}</span></div><div class="v61-history-list"><table class="v61-history-table"><thead><tr><th>Rig / Operator</th><th>Plan</th><th>Gross</th><th>Net</th><th>Flat</th><th>Var.</th><th>Adherence</th></tr></thead><tbody>${sorted.map(x=>{const s=v4Score(x),v=num(x.gross)-num(x.plan);return `<tr data-v61-hist="${x.id}"><td><b>${esc(x.rig)}</b><div style="color:#71879b;font-size:8px;margin-top:2px">${esc(x.operator||'')} · ${esc(x.origin||'')} → ${esc(x.destination||'')}</div></td><td>${round(x.plan,1)} d</td><td>${round(x.gross,1)} d</td><td>${round(x.net,1)} d</td><td>${round(x.flatHours,1)} h</td><td class="v61-var ${v>0?'bad':'good'}">${v>0?'+':''}${round(v,1)} d</td><td><span class="v61-score">${s.score??'—'}</span></td></tr>`}).join('')}</tbody></table></div></div>`}
+function v61HistoryTable(rows){const sorted=rows.slice().sort((a,b)=>new Date(b.acceptance||0)-new Date(a.acceptance||0));return `<div class="v61-panel"><div class="v61-panel-head"><div><h2>Moves finalizadas</h2><div class="sub">Histórico operacional</div></div><span class="v61-badge gray">${rows.length}</span></div><div class="v61-history-list"><table class="v61-history-table"><thead><tr><th>Rig / Operator</th><th>Plan</th><th>Gross</th><th>Net</th><th>Flat</th><th>Var.</th><th>Adherence</th></tr></thead><tbody>${sorted.map(x=>{const s=v4Score(x),v=num(x.gross)-num(x.plan);return `<tr data-v61-hist="${x.id}"><td><b>${esc(x.rig)}</b><div style="color:#71879b;font-size:12px;margin-top:2px">${esc(x.operator||'')} · ${esc(x.origin||'')} → ${esc(x.destination||'')}</div></td><td>${round(x.plan,1)} d</td><td>${round(x.gross,1)} d</td><td>${round(x.net,1)} d</td><td>${round(x.flatHours,1)} h</td><td class="v61-var ${v>0?'bad':'good'}">${v>0?'+':''}${round(v,1)} d</td><td><span class="v61-score">${s.score??'—'}</span></td></tr>`}).join('')}</tbody></table></div></div>`}
 function v61FilterBar(){const all=v4RealHistoryRows(),uniq=a=>['Todos',...new Set(a.filter(Boolean))],f=state.filters||{};return `<div class="v61-filters"><select id="v61Rig">${uniq(all.map(x=>x.rig)).map(x=>`<option ${f.rig===x?'selected':''}>${esc(x)}</option>`).join('')}</select><select id="v61Operator">${uniq(all.map(x=>x.operator)).map(x=>`<option ${f.operator===x?'selected':''}>${esc(x)}</option>`).join('')}</select><select id="v61Company">${uniq(all.map(x=>x.company)).map(x=>`<option ${f.company===x?'selected':''}>${esc(x)}</option>`).join('')}</select><button id="v61Clear" class="v61-filter-clear">Limpiar</button></div>`}
 function v61Group(rows,key){const g={};for(const x of rows){const k=x[key]||'Sin dato',s=v4Score(x).score;if(s==null)continue;const a=g[k]||(g[k]={n:0,sum:0});a.n++;a.sum+=s}return Object.entries(g).map(([name,a])=>({name,n:a.n,score:Math.round(a.sum/a.n)})).sort((a,b)=>b.score-a.score)}
 function v61RankPanel(title,items,meta='Moves'){return `<div class="v61-panel"><div class="v61-panel-head"><div><h2>${esc(title)}</h2><div class="sub">Top performance</div></div></div><div class="v61-rank">${items.slice(0,5).map((x,i)=>`<div class="v61-rank-row"><span class="n">${i+1}</span><span><span class="name">${esc(x.name)}</span><span class="meta">${x.n} ${meta}</span></span><span class="score"><b>${x.score}</b><span>score</span></span></div>`).join('')||'<div class="v61-live-empty">Sin datos.</div>'}</div></div>`}
@@ -1347,7 +1381,7 @@ wireReview=function(){
 
 /* Harden report navigation cumulatively: later/visited tabs cannot bypass missing prior data. */
 const BASE_WIRE_REPORT_V70=wireReport;
-function v70ShowMissing(missing){document.querySelectorAll('.v61-required-error').forEach(x=>x.classList.remove('v61-required-error'));document.querySelector('.v61-validation-banner')?.remove();if(!missing.length)return false;const banner=document.createElement('div');banner.className='v61-validation-banner';banner.textContent='Completa antes de continuar: '+missing.map(x=>x.label).join(', ')+'.';const head=document.querySelector('.v3-report-head');(head||document.querySelector('.v3-report-main')||document.querySelector('section'))?.insertAdjacentElement(head?'afterend':'afterbegin',banner);const ids=missing.flatMap(x=>x.ids||[]);ids.forEach(id=>q(id)?.classList.add('v61-required-error'));q(ids[0])?.scrollIntoView?.({behavior:'smooth',block:'center'});return true}
+function v70ShowMissing(missing){document.querySelectorAll('.v61-required-error').forEach(x=>x.classList.remove('v61-required-error'));document.querySelector('.v61-validation-banner')?.remove();if(!missing.length)return false;const banner=document.createElement('div');banner.className='v61-validation-banner';banner.id='riggoValidationError';banner.setAttribute('role','alert');banner.setAttribute('aria-atomic','true');banner.textContent='Completa antes de continuar: '+missing.map(x=>x.label).join(', ')+'.';const head=document.querySelector('.v3-report-head');(head||document.querySelector('.v3-report-main')||document.querySelector('section'))?.insertAdjacentElement(head?'afterend':'afterbegin',banner);const ids=missing.flatMap(x=>x.ids||[]);ids.forEach(id=>q(id)?.classList.add('v61-required-error'));q(ids[0])?.scrollIntoView?.({behavior:'smooth',block:'center'});return true}
 function v70FirstMissing(c,p,through){for(let s=0;s<=Math.min(4,through);s++){const miss=window.RigGOV61?.missing?.(s,c,p)||[];if(miss.length)return{step:s,missing:miss}}return null}
 wireReport=function(m,p,c){
   BASE_WIRE_REPORT_V70(m,p,c);
@@ -1362,7 +1396,7 @@ function v70ProgressHtml(m,p,c){
   const plan=currentPlanPcts(m,p),s=suggestedPcts(m,p),rep={rd:reportValue(c,'rd',s.rd),rm:reportValue(c,'rm',s.rm),ru:reportValue(c,'ru',s.ru)};
   const rows=[['Rig Down',plan.rd,rep.rd],['Rig Move',plan.rm,rep.rm],['Rig Up',plan.ru,rep.ru]];
   const bar=(v,color)=>`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#e8edf2"><tr><td width="${Math.max(1,Math.round(v70Pct(v)))}%" style="height:7px;background:${color};font-size:1px;line-height:1px">&nbsp;</td><td style="height:7px;font-size:1px;line-height:1px">&nbsp;</td></tr></table>`;
-  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #dfe5ea;background:#f7f9fb"><tr><td style="padding:10px 12px 5px;font-size:11px;font-weight:800;color:#475467">Plan vs Actual · Daily Progress</td></tr>${rows.map(([name,pv,av])=>`<tr><td style="padding:6px 12px 9px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td width="90" style="font-size:11px;font-weight:700;color:#344054">${name}</td><td style="padding:0 8px"><div style="font-size:9px;color:#667085;margin-bottom:2px">Plan ${Math.round(pv)}%</div>${bar(pv,'#1769ff')}<div style="font-size:9px;color:#667085;margin:4px 0 2px">Actual ${Math.round(av)}%</div>${bar(av,'#15b77e')}</td></tr></table></td></tr>`).join('')}</table>`;
+  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #dfe5ea;background:#f7f9fb"><tr><td style="padding:10px 12px 5px;font-size:12px;font-weight:800;color:#475467">Plan vs Actual · Daily Progress</td></tr>${rows.map(([name,pv,av])=>`<tr><td style="padding:6px 12px 9px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td width="90" style="font-size:12px;font-weight:700;color:#344054">${name}</td><td style="padding:0 8px"><div style="font-size:12px;color:#667085;margin-bottom:2px">Plan ${Math.round(pv)}%</div>${bar(pv,'#1769ff')}<div style="font-size:12px;color:#667085;margin:4px 0 2px">Actual ${Math.round(av)}%</div>${bar(av,'#15b77e')}</td></tr></table></td></tr>`).join('')}</table>`;
 }
 const BASE_EMAIL_V61=window.RigGOV61?.email;
 function v70EmailHtml(m,p,c,{forSend=false}={}){
@@ -1394,7 +1428,7 @@ sendDailyReport=async function(m,p,c){
     const dv=await v70NextVersion(m,periodId,'daily_move_update');reportId=await v70CreateReport(m,periodId,'daily_move_update',dv,null,to,cc,'pending_send');if(btn)btn.textContent='Enviando…';if(result)result.textContent='Enviando Daily Move Update + OPS…';
     const attachments=[{filename:opsName||`OPS-F0065-S_${m.meta.rig}_Dia${p.index}.pdf`,content:await v70Blob64(pdf)}];emailPhotos.forEach((x,i)=>attachments.push({filename:`RigGO_Photo_${i+1}.jpg`,content:v70Base64(x),contentId:`photo-${i+1}`}));
     const emailClosure={...c,photos:emailPhotos,photoCaptions:(c.photoCaptions||[]).slice(0,2)};const response=await v70Invoke({to,cc,subject:v70Subject(m,p),html:v70EmailDoc(m,p,emailClosure),replyTo:state.auth.email||undefined,attachments});
-    const sent=nowIso();c.sentAt=sent;c.sendStatus='sent';c.messageId=response.messageId||'';c.reportPhotoCount=emailPhotos.length;c.reportHadSignature=!!c.signature;await SB.from('reports').update({status:'sent',provider_message_id:response.messageId||null,sent_at:sent}).eq('id',reportId);await SB.from('daily_closures').update({sent_at:sent}).eq('period_id',periodId);c.photos=[];c.photoCaptions=[];c.signature='';save();if(result){result.style.color='#8ae4ad';result.textContent=`Enviado ✓ · OPS adjunto · ${emailPhotos.length} foto${emailPhotos.length===1?'':'s'}`}toast('Daily Move Update enviado');setTimeout(render,450);
+    const sent=nowIso();c.sentAt=sent;c.sendStatus='sent';c.messageId=response.messageId||'';c.reportPhotoCount=emailPhotos.length;c.reportHadSignature=!!c.signature;await SB.from('reports').update({status:'sent',provider_message_id:response.messageId||null,sent_at:sent}).eq('id',reportId);await SB.from('daily_closures').update({sent_at:sent}).eq('period_id',periodId);save();if(result){result.style.color='#8ae4ad';result.textContent=`Enviado ✓ · OPS adjunto · ${emailPhotos.length} foto${emailPhotos.length===1?'':'s'}`}toast('Daily Move Update enviado');setTimeout(render,450);
   }catch(e){console.error('RigGO 7.0 report send',e);try{if(reportId)await SB.from('reports').update({status:'failed',error_message:String(e.message||e)}).eq('id',reportId)}catch(_){ }if(result){result.style.color='#ffafb8';result.textContent='Error: '+String(e.message||e)}else alert('No fue posible enviar: '+e.message)}finally{v70Sending=false;if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent=c.sentAt?'Reenviar':'Enviar Daily Move Update + OPS'}}
 };
 
@@ -1516,7 +1550,7 @@ function showMissing(missing){
   document.querySelectorAll('.v61-required-error').forEach(x=>x.classList.remove('v61-required-error'));
   document.querySelector('.v61-validation-banner')?.remove();
   if(!missing?.length)return false;
-  const banner=document.createElement('div');banner.className='v61-validation-banner';banner.textContent='Completa antes de continuar: '+missing.map(x=>x.label).join(', ')+'.';
+  const banner=document.createElement('div');banner.className='v61-validation-banner';banner.id='riggoValidationError';banner.setAttribute('role','alert');banner.setAttribute('aria-atomic','true');banner.textContent='Completa antes de continuar: '+missing.map(x=>x.label).join(', ')+'.';
   const head=document.querySelector('.v3-report-head');if(head)head.insertAdjacentElement('afterend',banner);
   const ids=missing.flatMap(x=>x.ids||[]);ids.forEach(id=>E(id)?.classList.add('v61-required-error'));
   const first=ids.map(E).find(Boolean);if(first){first.scrollIntoView({behavior:'smooth',block:'center'});if(first.tagName!=='CANVAS')setTimeout(()=>{try{first.focus({preventScroll:true})}catch(_){ }},100)}
@@ -1571,7 +1605,7 @@ sendDailyReport=async function(m,p,c){
     const attachments=[{filename:opsName||`OPS-F0065-S_${m.meta.rig}_Dia${p.index}.pdf`,content:await blob64(pdf)}];photos.forEach((x,i)=>attachments.push({filename:`RigGO_Photo_${i+1}.jpg`,content:b64(x),contentId:`photo-${i+1}`}));
     const ec={...c,photos,photoCaptions:(c.photoCaptions||[]).slice(0,2),siteSupervisorRole:c.siteSupervisorRole||'Rig Manager'};
     const response=await invoke({to,cc,subject:`Rig ${m.meta.rig} | Daily Move Update | Día ${p.index} | ${m.meta.origin} to ${m.meta.destination}`,html:finalEmailHtml(m,p,ec),replyTo:state.auth.email||undefined,attachments});
-    const sent=nowIso();c.sentAt=sent;c.sendStatus='sent';c.messageId=response.messageId||'';c.reportPhotoCount=photos.length;c.reportHadSignature=!!c.signature;await SB.from('reports').update({status:'sent',provider_message_id:response.messageId||null,sent_at:sent}).eq('id',rid);await SB.from('daily_closures').update({sent_at:sent}).eq('period_id',periodId);c.photos=[];c.photoCaptions=[];c.signature='';save();if(result){result.style.color='#8ae4ad';result.textContent=`Enviado ✓ · OPS adjunto · ${photos.length} foto${photos.length===1?'':'s'}`}toast('Daily Move Update enviado');setTimeout(render,400);
+    const sent=nowIso();c.sentAt=sent;c.sendStatus='sent';c.messageId=response.messageId||'';c.reportPhotoCount=photos.length;c.reportHadSignature=!!c.signature;await SB.from('reports').update({status:'sent',provider_message_id:response.messageId||null,sent_at:sent}).eq('id',rid);await SB.from('daily_closures').update({sent_at:sent}).eq('period_id',periodId);save();if(result){result.style.color='#8ae4ad';result.textContent=`Enviado ✓ · OPS adjunto · ${photos.length} foto${photos.length===1?'':'s'}`}toast('Daily Move Update enviado');setTimeout(render,400);
   }catch(e){console.error('RigGO 9.0 report send',e);try{if(rid)await SB.from('reports').update({status:'failed',error_message:String(e.message||e)}).eq('id',rid)}catch(_){ }if(result){result.style.color='#ffafb8';result.textContent='Error: '+String(e.message||e)}else alert('No fue posible enviar: '+e.message)}finally{sending90=false;if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent=c.sentAt?'Reenviar':'Enviar Daily Move Update + OPS'}}
 };
 
@@ -1651,7 +1685,7 @@ function showMissing(missing){
   document.querySelectorAll('.v61-required-error').forEach(x=>x.classList.remove('v61-required-error'));
   document.querySelector('.v61-validation-banner')?.remove();
   if(!missing?.length)return false;
-  const banner=document.createElement('div');banner.className='v61-validation-banner';banner.textContent='Completa antes de continuar: '+missing.map(x=>x.label).join(', ')+'.';
+  const banner=document.createElement('div');banner.className='v61-validation-banner';banner.id='riggoValidationError';banner.setAttribute('role','alert');banner.setAttribute('aria-atomic','true');banner.textContent='Completa antes de continuar: '+missing.map(x=>x.label).join(', ')+'.';
   const head=document.querySelector('.v3-report-head');if(head)head.insertAdjacentElement('afterend',banner);
   const ids=missing.flatMap(x=>x.ids||[]);ids.forEach(id=>E(id)?.classList.add('v61-required-error'));
   const first=ids.map(E).find(Boolean);if(first){first.scrollIntoView({behavior:'smooth',block:'center'});if(first.tagName!=='CANVAS')setTimeout(()=>{try{first.focus({preventScroll:true})}catch(_){ }},100)}
@@ -1706,7 +1740,7 @@ sendDailyReport=async function(m,p,c){
     const attachments=[{filename:opsName||`OPS-F0065-S_${m.meta.rig}_Dia${p.index}.pdf`,content:await blob64(pdf)}];photos.forEach((x,i)=>attachments.push({filename:`RigGO_Photo_${i+1}.jpg`,content:b64(x),contentId:`photo-${i+1}`}));
     const ec={...c,photos,photoCaptions:(c.photoCaptions||[]).slice(0,2),siteSupervisorRole:c.siteSupervisorRole||'Rig Manager'};
     const response=await invoke({to,cc,subject:`Rig ${m.meta.rig} | Daily Move Update | Día ${p.index} | ${m.meta.origin} to ${m.meta.destination}`,html:finalEmailHtml(m,p,ec),replyTo:state.auth.email||undefined,attachments});
-    const sent=nowIso();c.sentAt=sent;c.sendStatus='sent';c.messageId=response.messageId||'';c.reportPhotoCount=photos.length;c.reportHadSignature=!!c.signature;await SB.from('reports').update({status:'sent',provider_message_id:response.messageId||null,sent_at:sent}).eq('id',rid);await SB.from('daily_closures').update({sent_at:sent}).eq('period_id',periodId);c.photos=[];c.photoCaptions=[];c.signature='';save();if(result){result.style.color='#8ae4ad';result.textContent=`Enviado ✓ · OPS adjunto · ${photos.length} foto${photos.length===1?'':'s'}`}toast('Daily Move Update enviado');setTimeout(render,400);
+    const sent=nowIso();c.sentAt=sent;c.sendStatus='sent';c.messageId=response.messageId||'';c.reportPhotoCount=photos.length;c.reportHadSignature=!!c.signature;await SB.from('reports').update({status:'sent',provider_message_id:response.messageId||null,sent_at:sent}).eq('id',rid);await SB.from('daily_closures').update({sent_at:sent}).eq('period_id',periodId);save();if(result){result.style.color='#8ae4ad';result.textContent=`Enviado ✓ · OPS adjunto · ${photos.length} foto${photos.length===1?'':'s'}`}toast('Daily Move Update enviado');setTimeout(render,400);
   }catch(e){console.error('RigGO 9.0 report send',e);try{if(rid)await SB.from('reports').update({status:'failed',error_message:String(e.message||e)}).eq('id',rid)}catch(_){ }if(result){result.style.color='#ffafb8';result.textContent='Error: '+String(e.message||e)}else alert('No fue posible enviar: '+e.message)}finally{sending90=false;if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent=c.sentAt?'Reenviar':'Enviar Daily Move Update + OPS'}}
 };
 
@@ -1816,7 +1850,7 @@ function lineSvg(items){if(!items.length)return '<div class="v90-empty">No hay M
 function liveChart(items){return `<div class="v90-panel"><div class="v90-panel-head"><div><h2>Tiempo consumido vs avance</h2><p>Portafolio activo</p></div></div><div class="v90-chart">${lineSvg(items)}</div><div class="v90-legend"><span class="time"><i></i>Tiempo</span><span class="progress"><i></i>Avance actual</span><span class="plan"><i></i>Plan hoy</span></div></div>`}
 function statusBars(items){const c={late:0,ontime:0,ahead:0};items.forEach(x=>c[x.status]++);const mx=Math.max(1,c.late,c.ontime,c.ahead),bar=(k,label)=>`<div class="v90-statebar ${k}"><strong>${c[k]}</strong><div class="track"><i style="height:${c[k]/mx*100}%"></i></div><span>${label}</span></div>`;return `<div class="v90-panel"><div class="v90-panel-head"><div><h2>Estado</h2><p>Atrasada · En tiempo · Adelantada</p></div></div><div class="v90-statebars">${bar('late','Atrasada')}${bar('ontime','En tiempo')}${bar('ahead','Adelantada')}</div></div>`}
 function testBadge(x){return x.test?'<span class="v90-tag" style="background:rgba(94,129,255,.13);color:#9fb4ff;border:1px solid rgba(94,129,255,.25)">PRUEBA</span>':''}
-function liveList(items){return `<div class="v90-panel"><div class="v90-panel-head"><div><h2>Moves en curso</h2><p>Toca una Move para ver detalle y pendientes</p></div><span class="status gray">${items.length}</span></div>${items.length?`<div class="v90-moves">${items.map(x=>{const z=stateMeta(x),ms=x.milestone?.name||'Sin hito pendiente';return `<button class="v90-move" data-v96-live="${ESC(x.m.id)}"><div class="v90-mini-ring-wrap"><div class="v90-mini-ring" style="--v90-p:${P(x.progress)};--v90-accent:${z.accent}"></div><b>${Math.round(P(x.progress))}%</b></div><div><h3>${ESC(x.m.meta?.rig||'Rig')} ${x.test?'<span style="font-size:8px;letter-spacing:.08em;color:#9fb4ff;vertical-align:middle">· PRUEBA</span>':''}</h3><div class="sub">${ESC(x.m.meta?.operator||'')} · Día ${x.p?.index||'—'} / ${x.planned} · ${ESC(x.m.meta?.origin||'')} → ${ESC(x.m.meta?.destination||'')}</div><div class="v90-tags">${testBadge(x)}<span class="v90-tag ${z.cls}">${z.label}</span><span class="v90-tag">Tiempo ${Math.round(x.timePct)}%</span><span class="v90-tag">Flat ${R(x.flat,1)} h</span><span class="v90-tag">Cargas ${x.loads.moved}/${x.loads.total}</span><span class="v90-tag">Pendientes ${x.pending.length}</span><span class="v90-tag">${ESC(ms)}</span></div></div><span class="v90-arrow">›</span></button>`}).join('')}</div>`:'<div class="v90-empty">No hay Moves en curso.</div>'}</div>`}
+function liveList(items){return `<div class="v90-panel"><div class="v90-panel-head"><div><h2>Moves en curso</h2><p>Toca una Move para ver detalle y pendientes</p></div><span class="status gray">${items.length}</span></div>${items.length?`<div class="v90-moves">${items.map(x=>{const z=stateMeta(x),ms=x.milestone?.name||'Sin hito pendiente';return `<button class="v90-move" data-v96-live="${ESC(x.m.id)}"><div class="v90-mini-ring-wrap"><div class="v90-mini-ring" style="--v90-p:${P(x.progress)};--v90-accent:${z.accent}"></div><b>${Math.round(P(x.progress))}%</b></div><div><h3>${ESC(x.m.meta?.rig||'Rig')} ${x.test?'<span style="font-size:12px;letter-spacing:.08em;color:#9fb4ff;vertical-align:middle">· PRUEBA</span>':''}</h3><div class="sub">${ESC(x.m.meta?.operator||'')} · Día ${x.p?.index||'—'} / ${x.planned} · ${ESC(x.m.meta?.origin||'')} → ${ESC(x.m.meta?.destination||'')}</div><div class="v90-tags">${testBadge(x)}<span class="v90-tag ${z.cls}">${z.label}</span><span class="v90-tag">Tiempo ${Math.round(x.timePct)}%</span><span class="v90-tag">Flat ${R(x.flat,1)} h</span><span class="v90-tag">Cargas ${x.loads.moved}/${x.loads.total}</span><span class="v90-tag">Pendientes ${x.pending.length}</span><span class="v90-tag">${ESC(ms)}</span></div></div><span class="v90-arrow">›</span></button>`}).join('')}</div>`:'<div class="v90-empty">No hay Moves en curso.</div>'}</div>`}
 function openLiveDetail(id){const x=activeData().find(z=>String(z.m.id)===String(id));if(!x)return;const z=stateMeta(x),next24=x.p?String(x.m.exec?.closures?.[x.p.id]?.next24||'').split(/\r?\n/).map(s=>s.replace(/^\s*[•*-]\s*/, '').trim()).filter(Boolean).slice(0,8):[];sheetRoot.innerHTML=`<div class="sheet-backdrop"><div class="sheet wide"><div class="sheet-handle"></div><div class="row between wrap"><div><div class="eyebrow">${x.test?'PRUEBA · ':''}${z.label.toUpperCase()}</div><h2>${ESC(x.m.meta?.rig||'Rig')} · Día ${x.p?.index||'—'}</h2><div class="sheet-sub">${ESC(x.m.meta?.origin||'')} → ${ESC(x.m.meta?.destination||'')}</div></div><div class="v90-tags">${testBadge(x)}<span class="v90-tag ${z.cls}">${z.label}</span></div></div><div class="v90-detail"><div class="v90-detail-kpis"><div><span>Tiempo</span><b>${R(x.elapsed,1)} / ${x.planned} d</b></div><div><span>Avance</span><b>${Math.round(x.progress)}%</b></div><div><span>Plan hoy</span><b>${Math.round(x.planAvg)}%</b></div><div><span>Gap</span><b>${x.gap>0?'+':''}${R(x.gap,1)} pp</b></div><div><span>Flat Time</span><b>${R(x.flat,1)} h</b></div><div><span>Cargas</span><b>${x.loads.moved}/${x.loads.total}</b></div><div><span>Pendientes</span><b>${x.pending.length}</b></div></div><div><h3>Pendientes del día</h3><div class="v90-pending">${x.pending.length?x.pending.map(v=>`<div>${ESC(v)}</div>`).join(''):'<div>Sin pendientes.</div>'}</div></div><div><h3>Próximas 24 Hrs</h3><div class="v90-pending">${next24.length?next24.map(v=>`<div>${ESC(v)}</div>`).join(''):'<div>Sin actividades registradas.</div>'}</div></div></div><div class="sheet-footer"><button id="v96CloseDetail" class="btn">Cerrar</button>${typeof hasPerm==='function'&&hasPerm('execute')?'<button id="v96OpenMove" class="btn primary">Abrir Move</button>':''}</div></div></div>`;E('v96CloseDetail').onclick=closeSheet;if(E('v96OpenMove'))E('v96OpenMove').onclick=()=>{closeSheet();state.selectedMoveId=x.m.id;state.screen='execute';state.execMode='days';save();render();try{scrollTopNow()}catch(_){}}}
 
 const BASE_RENDER_OVERALL_96=renderOverall;
@@ -1949,7 +1983,7 @@ function phaseDelta(x,k){const c=curve(x.m,k),actual=N(x.actual?.[k]),plan=N(x.p
 function enrich(x){const ac=aggregateCurve(x.m),avg=(N(x.actual?.rd)+N(x.actual?.rm)+N(x.actual?.ru))/3,equiv=ac.length?dayAtProgress(ac,avg):N(x.elapsed),schedule=equiv-N(x.elapsed),st=deltaState(schedule),due=plannedLoadsDue(x),moved=actualMovedLoads(x),loadDelta=moved-due;return{...x,schedule,state104:st,equiv,loadDue:due,loadMoved:moved,loadDelta,phaseDays:{rd:phaseDelta(x,'rd'),rm:phaseDelta(x,'rm'),ru:phaseDelta(x,'ru')}}}
 function liveRows(){return active().map(enrich)}
 function scheduleHeadline(d){if(Math.abs(d)<=.25)return'Portfolio en tiempo';return d<0?`Portfolio · ${Math.abs(R(d,1))} días atrasado`:`Portfolio · ${Math.abs(R(d,1))} días adelantado`}
-function ring(label,pct,value,sub,cls='good'){return `<div class="v104-ring-card"><div class="v104-ring ${cls}" style="--p:${P(pct)}"><div><b>${ESC(value)}</b><small>${ESC(label)}</small></div></div><p>${ESC(sub)}</p></div>`}
+function ring(label,pct,value,sub,cls='good'){return `<div class="riggo124-summary-metric ${cls}"><span>${ESC(label)}</span><strong>${ESC(value)}</strong><p>${ESC(sub)}</p></div>`}
 function portfolio(items){const c={late:0,ontime:0,ahead:0};items.forEach(x=>c[x.state104.key]++);const avg=items.length?items.reduce((s,x)=>s+x.schedule,0)/items.length:0,flat=items.reduce((s,x)=>s+N(x.flat),0),due=items.reduce((s,x)=>s+x.loadDue,0),moved=items.reduce((s,x)=>s+x.loadMoved,0),elapsedH=items.reduce((s,x)=>s+N(x.elapsed)*24,0),productive=elapsedH?P(100-flat/elapsedH*100):100,health=items.length?(c.ontime+c.ahead)/items.length*100:0,loadPct=due?P(moved/due*100):100;return `<section class="v104-hero"><div class="v104-hero-top"><div><span>PORTAFOLIO ACTIVO</span><h2>${items.length} Move${items.length===1?'':'s'} en curso</h2><p><i class="ahead"></i>${c.ahead} adelantada${c.ahead===1?'':'s'} <i class="ontime"></i>${c.ontime} en tiempo <i class="late"></i>${c.late} atrasada${c.late===1?'':'s'}</p></div><strong class="${deltaState(avg).key}">${scheduleHeadline(avg)}</strong></div><div class="v104-kpis"><div><span>Schedule</span><b>${dayText(avg,true)}</b><small>promedio del portfolio</small></div><div><span>Cargas vs Plan</span><b class="${moved-due<0?'late':moved-due>0?'ahead':''}">${moved-due>0?'+':''}${moved-due}</b><small>${moved} movidas · ${due} plan a hoy</small></div><div><span>Flat Time</span><b>${R(flat,1)} h</b><small>acumulado activo</small></div><div><span>On Plan</span><b>${c.ontime+c.ahead}/${items.length}</b><small>en tiempo o adelante</small></div></div><div class="v104-rings">${ring('Schedule Health',health,Math.round(health)+'%',`${c.ontime+c.ahead} de ${items.length} Moves`,health>=70?'good':health>=40?'warn':'bad')}${ring('Cargas a Plan',loadPct,`${moved}/${due||0}`,'movidas vs requeridas',loadPct>=95?'good':loadPct>=80?'warn':'bad')}${ring('Productive Time',productive,Math.round(productive)+'%',`${R(flat,1)} h Flat`,productive>=90?'good':productive>=75?'warn':'bad')}</div></section>`}
 function phaseLine(x,k,label){const actual=P(x.actual?.[k]),plan=P(x.plan?.[k]),d=x.phaseDays[k],st=d==null?{key:'neutral'}:deltaState(d);let metric=d==null?'En espera':dayText(d);if(k==='rm'){const ld=x.loadDelta;metric=ld===0?'Cargas en plan':ld<0?`${Math.abs(ld)} cargas atrás`:`${ld} cargas adelante`}return `<div class="v104-phase"><div class="v104-phase-title"><b>${label}</b><strong class="${st.key}">${ESC(metric)}</strong></div><div class="v104-phase-track"><span class="${st.key}" style="width:${actual}%"></span><i style="left:${plan}%"></i></div><div class="v104-phase-meta"><span>Actual <b>${Math.round(actual)}%</b></span><span>Plan ${Math.round(plan)}%</span>${k==='rm'?`<span>${x.loadMoved}/${x.loadDue} cargas</span>`:''}</div></div>`}
 function moveCard(x){const route=[x.m?.meta?.origin,x.m?.meta?.destination].filter(Boolean).join(' → '),test=x.test?'<span class="v104-test">PRUEBA</span>':'';return `<button class="v104-move" data-v104-live="${ESC(x.m?.id)}"><div class="v104-move-head"><div><div class="v104-rig"><strong>${ESC(x.m?.meta?.rig||'Rig')}</strong>${test}</div><span>${ESC(x.m?.meta?.operator||'')}${route?' · '+ESC(route):''}</span></div><div class="v104-schedule ${x.state104.key}"><small>${x.state104.label}</small><b>${dayText(x.schedule,true)}</b></div></div><div class="v104-phases">${phaseLine(x,'rd','Rig Down')}${phaseLine(x,'rm','Transporte')}${phaseLine(x,'ru','Rig Up')}</div><div class="v104-move-foot"><span>Día <b>${x.p?.index||'—'} / ${x.planned||'—'}</b></span><span>Flat <b>${R(x.flat,1)} h</b></span><span>Pendientes <b>${x.pending?.length||0}</b></span><span>Tiempo <b>${Math.round(N(x.timePct))}%</b></span></div></button>`}
@@ -2032,7 +2066,7 @@ function homeSummaryHtml(){const {rows,c}=homeCounts();if(!rows.length)return'<s
 renderHome=function(){let h=BASE_HOME();const card=`<div class="v106-home-greeting"><div class="v106-greet">${ESC(greeting())}</div><div class="v106-home-summary">${homeSummaryHtml()}</div></div>`,kicker='<div class="v52-kicker"><span></span>RIGGO · OPERATIONS EXCELLENCE</div>';return String(h).replace(kicker,kicker+card)};
 
 /* ---------- Performance ---------- */
-function ring(label,pct,value,sub,cls='good'){return `<div class="v106-ring-card"><div class="v106-ring ${cls}" style="--p:${P(pct)}"><div><b>${ESC(value)}</b><small>${ESC(label)}</small></div></div><p>${ESC(sub)}</p></div>`}
+function ring(label,pct,value,sub,cls='good'){return `<div class="riggo124-summary-metric ${cls}"><span>${ESC(label)}</span><strong>${ESC(value)}</strong><p>${ESC(sub)}</p></div>`}
 function operationSummary(items){const c={late:0,ontime:0,ahead:0};items.forEach(x=>c[x.state106.key]++);const avg=items.length?items.reduce((s,x)=>s+x.schedule,0)/items.length:0,flat=items.reduce((s,x)=>s+N(x.flat),0),due=items.reduce((s,x)=>s+x.loadDue,0),moved=items.reduce((s,x)=>s+x.loadMoved,0),elapsedH=items.reduce((s,x)=>s+N(x.elapsed)*24,0),productive=elapsedH?P(100-flat/elapsedH*100):100,health=items.length?(c.ontime+c.ahead)/items.length*100:0,loadPct=due?P(moved/due*100):100,st=deltaState(avg);return `<section class="v106-summary"><div class="v106-summary-head"><div><span>OPERACIÓN EN CURSO</span><h2>${items.length} Move${items.length===1?'':'s'} activa${items.length===1?'':'s'}</h2><p>${c.ahead} adelantada${c.ahead===1?'':'s'} · ${c.ontime} en tiempo · ${c.late} atrasada${c.late===1?'':'s'}</p></div><strong class="${st.key}">${dayText(avg)}</strong></div><div class="v106-summary-kpis"><div><span>Schedule</span><b class="${st.key}">${dayText(avg)}</b><small>promedio de Moves activas</small></div><div><span>Cargas vs Plan</span><b class="${moved-due<0?'late':moved-due>0?'ahead':''}">${moved-due>0?'+':''}${moved-due}</b><small>${moved} movidas · ${due} requeridas</small></div><div><span>Flat Time</span><b>${R(flat,1)} h</b><small>acumulado</small></div><div><span>On Plan</span><b>${c.ontime+c.ahead}/${items.length}</b><small>en tiempo o adelante</small></div></div><div class="v106-rings">${ring('Moves alineadas',health,Math.round(health)+'%',`${c.ontime+c.ahead} de ${items.length}`,health>=70?'good':health>=40?'warn':'bad')}${ring('Cargas vs Plan',loadPct,`${moved}/${due||0}`,'movidas / requeridas',loadPct>=95?'good':loadPct>=80?'warn':'bad')}${ring('Productive Time',productive,Math.round(productive)+'%',`${R(flat,1)} h Flat`,productive>=90?'good':productive>=75?'warn':'bad')}</div></section>`}
 function currentPhase(x){if(N(x.actual?.rd)<100)return 1;if(N(x.actual?.rm)<100)return 2;if(N(x.actual?.ru)<100)return 3;return 4}
 function routeStrip(x,compact=false){const step=currentPhase(x),origin=x.m?.meta?.origin||'Origen',dest=x.m?.meta?.destination||'Destino';const labels=[origin,'Rig Down','Transporte','Rig Up',dest];return `<div class="v106-route ${compact?'compact':''}">${labels.map((l,i)=>`<div class="${i<step?'done':i===step?'current':''}"><i></i><span>${ESC(l)}</span></div>`).join('')}</div>`}
@@ -2507,6 +2541,7 @@ let dirtyMoves112=new Map();
 let hydrateRun112=0;
 let hydrateDeferred112=false;
 let hydrateDeferredTimer112=null;
+let fullReadNextAt112=0,fullReadFailures112=0,fullReadUser112='';
 
 const clone112=v=>{try{return structuredClone(v)}catch(_){return JSON.parse(JSON.stringify(v))}};
 const uuid112=()=>{try{return crypto.randomUUID()}catch(_){return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==='x'?r:(r&3|8);return v.toString(16)})}};
@@ -2648,20 +2683,19 @@ function setBadge112(mode,text){
   });
 }
 function isTransportError112(e){
-  if(navigator.onLine===false)return true;
-  const msg=String(e?.message||e?.details||e?.hint||e||'');
-  return /failed to fetch|networkerror|network request failed|load failed|timeout|connection (?:lost|reset|refused)|offline/i.test(msg);
+  return window.RigGOSyncRetry1238.transient(e);
 }
 function syncErrorText112(e){return String(e?.message||e?.details||e?.code||e||'Error de sincronización').slice(0,220)}
 function ensureBadge112(){
   if(typeof document==='undefined')return;
   const a=document.querySelector('.top-actions');
   if(a&&!a.querySelector('.online-sync')){const s=document.createElement('span');s.className='online-sync';a.prepend(s)}
-  const pending=window.RigGOV112?.pendingCount||0;
+  const execution=window.RigGOV120?.syncState||{},pending=(window.RigGOV112?.pendingCount||0)+(execution.total||0);
   if(!isOnline112()||transportIssue112)setBadge112('offline',pending?`Offline · ${pending} pendiente${pending===1?'':'s'}`:'Offline · trabajando localmente');
-  else if(syncError112)setBadge112('bad',`Error de sincronización · ${syncError112}`);
+  else if(syncError112||execution.blocked)setBadge112('bad',`Error de sincronización · ${syncError112||execution.lastError||'Guardado de ejecución rechazado'}`);
   else if(flushBusy)setBadge112('syncing','Sincronizando…');
-  else if(blockedReviewCount112)setBadge112('ok',`Online · ${blockedReviewCount112} operación${blockedReviewCount112===1?'':'es'} en cuarentena`);
+  else if(blockedReviewCount112)setBadge112('bad',`Guardado pendiente de revisión · ${blockedReviewCount112} operación${blockedReviewCount112===1?'':'es'}`);
+  else if(pending)setBadge112('syncing',`Guardado localmente · ${pending} pendiente${pending===1?'':'s'} de sincronización`);
   else setBadge112('ok','Online');
 }
 
@@ -2675,13 +2709,16 @@ async function queueSave112(m,opts={}){
   const force=!!opts.force,fp=fingerprint112(m),last=m.syncMeta?.lastServerFingerprint||lastSignatures.get(m.id)||'';
   if(!force&&fp===last&&!m.syncMeta?.conflict){dirtyMoves112.delete(m.id);return;}
   dirtyMoves112.set(m.id,{fingerprint:fp,at:new Date().toISOString()});
+  const existing=await idbGet112(OUTBOX_STORE,`save:${m.id}`);
+  if(!force&&existing?.fingerprint===fp)return existing;
   const rec={key:`save:${m.id}`,type:'save',moveId:m.id,operationId:uuid112(),expectedRevision:opts.expectedRevision!=null?Number(opts.expectedRevision):Number(m.syncMeta?.revision)||0,row:moveToRow112(m),baseRow:clone112(opts.baseRow!==undefined?opts.baseRow:(m.syncMeta?.lastServerRow||null)),assignedEmails:[...(m.access?.assignedEmails||[])],fingerprint:fp,createdAt:new Date().toISOString(),forced:force};
+  if(force&&existing)window.RigGOSyncRetry1238.preserve(existing,rec);
   await queue112(rec);
 }
 async function queueDelete112(m){return queue112({key:`delete:${m.id}`,type:'delete',moveId:m.id,operationId:uuid112(),expectedRevision:Number(m.syncMeta?.revision)||0,createdAt:new Date().toISOString(),confirmedByUser:true,sourceBuild:'2026-08-22-1832-1216B-F4'})}
 async function queueRestore112(m){return queue112({key:`restore:${m.id}`,type:'restore',moveId:m.id,operationId:uuid112(),expectedRevision:Number(m.syncMeta?.revision)||0,createdAt:new Date().toISOString()})}
 async function discardLegacyDelete112(moveId){const key=`delete:${moveId}`,rec=await idbGet112(OUTBOX_STORE,key);if(!rec)return{ok:true,missing:true,moveId};if(rec.type!=='delete'||rec.confirmedByUser)return{ok:false,code:'not_legacy_delete',moveId};await idbDelete112(OUTBOX_STORE,key);syncError112=null;await refreshPending112();ensureBadge112();return{ok:true,discarded:true,moveId}}
-async function retryBlockedSave112(moveId){const key=`save:${moveId}`,rec=await idbGet112(OUTBOX_STORE,key);if(!rec)return{ok:false,code:'missing',moveId};if(rec.type!=='save')return{ok:false,code:'not_save',moveId};delete rec.blockedCode;delete rec.blockedAt;delete rec.lastError;rec.retryApprovedAt=new Date().toISOString();rec.operationId=uuid112();await idbPut112(OUTBOX_STORE,rec);syncError112=null;await refreshPending112();ensureBadge112();return syncCycle112()}
+async function retryBlockedSave112(moveId){const key=`save:${moveId}`,rec=await idbGet112(OUTBOX_STORE,key);if(!rec)return{ok:false,code:'missing',moveId};if(rec.type!=='save')return{ok:false,code:'not_save',moveId};window.RigGOSyncRetry1238.clear(rec);rec.retryApprovedAt=new Date().toISOString();rec.operationId=uuid112();await idbPut112(OUTBOX_STORE,rec);syncError112=null;await refreshPending112();ensureBadge112();return syncCycle112()}
 async function discardBlockedSave112(moveId){const key=`save:${moveId}`,rec=await idbGet112(OUTBOX_STORE,key);if(!rec)return{ok:true,missing:true,moveId};if(rec.type!=='save'||!rec.blockedCode)return{ok:false,code:'not_blocked_save',moveId};await idbDelete112(OUTBOX_STORE,key);syncError112=null;await refreshPending112();ensureBadge112();return{ok:true,discarded:true,moveId}}
 function localMove112(id){return state.moves.find(x=>x.id===id)}
 function stampTrace112(m,data={}){
@@ -2746,6 +2783,10 @@ async function rebaseSave112(item,conflict){
   item.rebasedAt=new Date().toISOString();item.rebaseCount=Number(item.rebaseCount||0)+1;
   await idbPut112(OUTBOX_STORE,item);return true;
 }
+async function postponeMasterRetry112(item,error){
+  const current=await idbGet112(OUTBOX_STORE,item.key);
+  if(current?.operationId===item.operationId){window.RigGOSyncRetry1238.postpone(current,error);await idbPut112(OUTBOX_STORE,current);}
+}
 async function flushOutboxCore112(){
   if(!isOnline112()||!state?.auth?.logged||!SB)return {ok:false,offline:true,transportFailure:!isOnline112(),processed:0};
   flushBusy=true;syncError112=null;setBadge112('syncing','Sincronizando cambios de campo…');
@@ -2760,7 +2801,8 @@ async function flushOutboxCore112(){
       if(!items.length)break;
       let roundProgress=0;
       for(const original of items){
-        if(original?.blockedCode&&!original?.retryApprovedAt){blockedKeys.add(original.key);blocked=true;continue;}
+        if(window.RigGOSyncRetry1238.blocked(original)){blockedKeys.add(original.key);blocked=true;continue;}
+        if(!window.RigGOSyncRetry1238.due(original)){blockedKeys.add(original.key);continue;}
         let item=clone112(original),data=null,attempt=0,itemBlocked=false;
         while(attempt<3){
           if(item.type==='delete'&&!item.confirmedByUser){
@@ -2773,7 +2815,7 @@ async function flushOutboxCore112(){
             else if(item.type==='restore')data=await rpc112('riggo_move_restore_v2',{p_move_id:item.moveId,p_expected_revision:item.expectedRevision,p_operation_id:item.operationId});
             else{await idbDelete112(OUTBOX_STORE,item.key);data={ok:true,discarded:true};break}
           }catch(e){
-            if(isTransportError112(e)){transportIssue112=true;transportFailure=true;console.warn('RigGO sync network:',e);break}
+            if(isTransportError112(e)){await postponeMasterRetry112(item,e);transportIssue112=true;transportFailure=true;console.warn('RigGO sync network:',e);break}
             transportIssue112=false;syncError112=syncErrorText112(e);data={ok:false,code:e?.code||'rpc_error',message:e?.message||String(e),details:e?.details||'',serverError:true};itemBlocked=true;blocked=true;console.warn('RigGO sync server:',e);break
           }
           if(data?.ok)break;
@@ -2783,7 +2825,7 @@ async function flushOutboxCore112(){
               if(!rebased){itemBlocked=true;blocked=true;break}
               item=await idbGet112(OUTBOX_STORE,item.key)||item;attempt++;setBadge112('syncing','Reconciliando Move…');continue;
             }catch(e){
-              if(isTransportError112(e)){transportIssue112=true;transportFailure=true;console.warn('RigGO rebase network:',e);break}
+              if(isTransportError112(e)){await postponeMasterRetry112(item,e);transportIssue112=true;transportFailure=true;console.warn('RigGO rebase network:',e);break}
               transportIssue112=false;syncError112=syncErrorText112(e);blocked=true;itemBlocked=true;console.warn('RigGO rebase server:',e);break
             }
           }
@@ -2828,7 +2870,7 @@ async function flushOutboxCore112(){
         }
         if(itemBlocked){
           blockedKeys.add(item.key);
-          if(current?.operationId===item.operationId){current.blockedAt=new Date().toISOString();current.blockedCode=data?.code||'server_rejected';current.lastError=data?.message||data?.error||'Operación pendiente';await idbPut112(OUTBOX_STORE,current)}
+          if(current?.operationId===item.operationId){delete current.retryApprovedAt;current.blockedAt=new Date().toISOString();current.blockedCode=data?.code||'server_rejected';current.lastError=data?.message||data?.error||'Operación pendiente';await idbPut112(OUTBOX_STORE,current)}
           // Continue with the next Move instead of head-of-line blocking the whole field queue.
           continue;
         }
@@ -2950,16 +2992,25 @@ async function hydrateCore112(){
   }catch(e){const transport=isTransportError112(e);remoteOnline=!transport;transportIssue112=transport;if(!transport)syncError112=syncErrorText112(e);console.error('RigGO 11.7 hydrate:',e);setBadge112(transport?'offline':'bad',transport?'Offline · trabajando localmente':`Error de sincronización · ${syncError112}`);return {ok:false,error:e,transportFailure:transport,serverFailure:!transport}}
   finally{hydrateBusy112=false}
 }
-function hydrate112(){
+function hydrate112({background=false}={}){
   if(hydratePromise112)return hydratePromise112;
+  const user=userEmail112();
+  if(background&&user===fullReadUser112&&Date.now()<fullReadNextAt112)return Promise.resolve({ok:true,cached:true,rateLimited:true});
+  function track(result,error=null){
+    fullReadUser112=user;
+    if(result?.ok&&!result.deferred){fullReadFailures112=0;fullReadNextAt112=Date.now()+30000;}
+    else if(result?.transportFailure||isTransportError112(error||result?.error||'')){fullReadFailures112++;fullReadNextAt112=Date.now()+window.RigGOSyncRetry1238.delay(fullReadFailures112);}
+    else if(result?.serverFailure){fullReadNextAt112=Date.now()+30000;}
+  }
   hydratePromise112=hydrateCore112().then(async r=>{
     let execution=null;
     if(r?.ok&&window.RigGOV120?.hydrateExecution)execution=await window.RigGOV120.hydrateExecution({renderNow:false});
     // Render only after BOTH master and execution authorities are reconciled. This
     // prevents a transient master-only frame from replacing tasks/loads in the UI.
     if(r?.ok&&(r.movesChanged||r.usersChanged||execution?.changed)){try{render();setTimeout(postRender112,0)}catch(_){}}
-    return {...r,execution};
-  }).finally(()=>{hydratePromise112=null});
+    if(window.RigGOV120?.retryStatus)await window.RigGOV120.retryStatus();ensureBadge112();
+    const result={...r,execution};track(result);return result;
+  }).catch(error=>{track(null,error);throw error}).finally(()=>{hydratePromise112=null});
   return hydratePromise112;
 }
 try{hydrateRemote=hydrate112}catch(_){}
@@ -3248,7 +3299,7 @@ async function registerSw112(){
 }
 
 /* ---------- connectivity transitions: one coordinator ---------- */
-async function syncCycle112({hydrate=true,reports=true}={}){
+async function syncCycle112({hydrate=true,reports=true,background=false}={}){
   if(syncCyclePromise112)return syncCyclePromise112;
   syncCyclePromise112=(async()=>{
     if(!state?.auth?.logged)return {ok:false,auth:false};
@@ -3259,21 +3310,26 @@ async function syncCycle112({hydrate=true,reports=true}={}){
     const ef=window.RigGOV120?.flush?await window.RigGOV120.flush():null;
     if(ef?.transportFailure)return ef;
     if(reports)await syncPendingReports112();
-    if(hydrate)return await hydrate112();
+    if(hydrate)return await hydrate112({background});
     return f;
   })().finally(()=>{syncCyclePromise112=null});
   return syncCyclePromise112;
 }
 window.addEventListener('offline',()=>{lastNetworkState='offline';transportIssue112=true;ensureBadge112();scheduleSnapshot112()});
-window.addEventListener('online',()=>{lastNetworkState='online';transportIssue112=false;if(document.documentElement.classList.contains('riggo-booting'))return;syncCycle112().catch(()=>ensureBadge112())});
-document.addEventListener('visibilitychange',()=>{if(document.documentElement.classList.contains('riggo-booting'))return;if(document.visibilityState==='visible'&&state?.auth?.logged){if(isOnline112())syncCycle112().catch(()=>{});else ensureBadge112()}});
+window.addEventListener('online',()=>{lastNetworkState='online';transportIssue112=false;if(document.documentElement.classList.contains('riggo-booting'))return;syncCycle112({background:true}).catch(()=>ensureBadge112())});
+document.addEventListener('visibilitychange',()=>{if(document.documentElement.classList.contains('riggo-booting'))return;if(document.visibilityState==='visible'&&state?.auth?.logged){if(isOnline112())syncCycle112({background:true}).catch(()=>{});else ensureBadge112()}});
 
 /* Weak/intermittent signal may not fire online/offline events. Retry pending work quietly. */
-setInterval(async()=>{
-  if(document.documentElement.classList.contains('riggo-booting')||!state?.auth?.logged||navigator.onLine===false)return;
-  const pending=await refreshPending112(),execPending=window.RigGOV120?.pendingCount?await window.RigGOV120.pendingCount().catch(()=>0):0;
-  if(pending||execPending||transportIssue112){try{await syncCycle112()}catch(_){transportIssue112=true;ensureBadge112()}}
-},15000);
+async function backgroundSync112(){
+  if(document.documentElement.classList.contains('riggo-booting')||document.visibilityState==='hidden'||!state?.auth?.logged||navigator.onLine===false)return;
+  await refreshPending112();
+  const master=window.RigGOSyncRetry1238.summary(await idbAll112(OUTBOX_STORE));
+  const execution=window.RigGOV120?.retryStatus?await window.RigGOV120.retryStatus():{total:0,due:0};
+  // Retry due writes using their existing idempotency tokens; do not pull every Move.
+  if(master.due||execution.due){try{return await syncCycle112({hydrate:false,reports:false,background:true})}catch(_){transportIssue112=true;ensureBadge112()}}
+  else if(transportIssue112&&!master.total&&!execution.total){try{return await hydrate112({background:true})}catch(_){ensureBadge112()}}
+}
+setInterval(()=>backgroundSync112().catch(e=>console.warn('RigGO background sync:',e)),15000);
 
 /* ---------- unified boot: local snapshot first, then session/server ---------- */
 async function bootSession112(){
@@ -3327,7 +3383,7 @@ try{tryRemoteSession=bootSession112}catch(_){ }
 async function startServices112(){if(servicesPromise112)return servicesPromise112;servicesPromise112=(async()=>{scheduleSnapshot112();return true})();return servicesPromise112}
 
 /* ---------- initialize: expose capabilities only; V115 is sole boot owner ---------- */
-window.RigGOV112={release:RELEASE,build:BUILD,pendingCount:0,moveToRow:moveToRow112,rowToMove:rowToMove112,fingerprint:fingerprint112,draftReady:draftReady112,queueSave:queueSave112,queueDelete:queueDelete112,queueRestore:queueRestore112,refreshPending:refreshPending112,flush:flushOutbox112,hydrate:hydrate112,persistNow:syncMoveNow112,verifyBeforeEmail:verifyMoveBeforeEmail112,syncReports:syncPendingReports112,greeting:greeting112,emailHuman:emailHuman112,reactions:()=>reactionsByMove,markDirty:markDirtyMove112,dirtyIds:()=>[...dirtyMoves112.keys()],protectedIds:protectedIds112,restoreSnapshot:restoreSnapshot112,syncCycle:syncCycle112,boot:bootSession112,startServices:startServices112,startMove:startMove112,openEditMove:(typeof window.v4EditMove==='function'?window.v4EditMove:null),syncDiagnostic:()=>({browserOnline:navigator.onLine!==false,transportIssue:transportIssue112,syncError:syncError112,pending:window.RigGOV112?.pendingCount||0,quarantined:blockedReviewCount112}),listOutbox:()=>idbAll112(OUTBOX_STORE),discardLegacyDelete:discardLegacyDelete112,retryBlockedSave:retryBlockedSave112,discardBlockedSave:discardBlockedSave112};
+window.RigGOV112={release:RELEASE,build:BUILD,pendingCount:0,moveToRow:moveToRow112,rowToMove:rowToMove112,fingerprint:fingerprint112,draftReady:draftReady112,queueSave:queueSave112,queueDelete:queueDelete112,queueRestore:queueRestore112,refreshPending:refreshPending112,flush:flushOutbox112,hydrate:hydrate112,persistNow:syncMoveNow112,verifyBeforeEmail:verifyMoveBeforeEmail112,syncReports:syncPendingReports112,greeting:greeting112,emailHuman:emailHuman112,reactions:()=>reactionsByMove,markDirty:markDirtyMove112,dirtyIds:()=>[...dirtyMoves112.keys()],protectedIds:protectedIds112,restoreSnapshot:restoreSnapshot112,syncCycle:syncCycle112,backgroundSync:backgroundSync112,boot:bootSession112,startServices:startServices112,startMove:startMove112,openEditMove:(typeof window.v4EditMove==='function'?window.v4EditMove:null),syncDiagnostic:()=>({browserOnline:navigator.onLine!==false,transportIssue:transportIssue112,syncError:syncError112,pending:window.RigGOV112?.pendingCount||0,quarantined:blockedReviewCount112}),listOutbox:()=>idbAll112(OUTBOX_STORE),discardLegacyDelete:discardLegacyDelete112,retryBlockedSave:retryBlockedSave112,discardBlockedSave:discardBlockedSave112};
 
 enableDesktopScroll112();
 // IMPORTANT: no boot/hydrate/SW registration is launched here. RigGO 11.7
@@ -3354,7 +3410,7 @@ const MAIL_DB='riggo-email-v114';
 const MAIL_DB_VERSION=1;
 const MAIL_STORE='emails';
 const EMAIL_RETRY_MS=15000;
-const EMAIL_RENDERER_VERSION=3;
+const EMAIL_RENDERER_VERSION=5;
 const SB=window.RigGOSupabase||null;
 let mailDbPromise=null;
 let mailDrainPromise=null;
@@ -3426,25 +3482,25 @@ function treatmentTone114(value){
   if(k==='tarifa negociada')return{bg:'#f3efff',fg:'#6840a5',bd:'#d9cef1'};
   return{bg:'#f2f4f7',fg:'#475467',bd:'#dfe3e8'};
 }
-function treatmentBadge114(value){const v=String(value||'Por definir').trim()||'Por definir',t=treatmentTone114(v);return `<span style="display:inline-block;padding:4px 8px;border-radius:12px;border:1px solid ${t.bd};background:${t.bg};color:${t.fg};font-size:10px;line-height:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap">${esc(v.toUpperCase())}</span>`}
+function treatmentBadge114(value){const v=String(value||'Por definir').trim()||'Por definir',t=treatmentTone114(v);return `<span style="display:inline-block;padding:4px 8px;border-radius:12px;border:1px solid ${t.bd};background:${t.bg};color:${t.fg};font-size:12px;line-height:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap">${esc(v.toUpperCase())}</span>`}
 function eventHours114(e){try{return typeof eventHours==='function'?Number(eventHours(e)||0):Math.max(0,Number(e?.hours)||0)}catch(_){return Math.max(0,Number(e?.hours)||0)}}
 function flatTreatmentSummary114(events){
   const g=new Map();for(const e of events||[]){const k=String(e?.commercial||'Por definir').trim()||'Por definir';g.set(k,(g.get(k)||0)+eventHours114(e))}
   const order=['Eximente','Por definir','No aplica','Facturable','No facturable','Bajo revisión','Tarifa negociada'];
-  return [...g.entries()].sort((a,b)=>{const ai=order.indexOf(a[0]),bi=order.indexOf(b[0]);return (ai<0?99:ai)-(bi<0?99:bi)||b[1]-a[1]}).map(([k,h])=>{const t=treatmentTone114(k);return `<span style="display:inline-block;margin:0 6px 6px 0;padding:5px 8px;border-radius:12px;border:1px solid ${t.bd};background:${t.bg};color:${t.fg};font-size:10px;line-height:12px;font-weight:800">${esc(k)} · ${Math.round(h*100)/100} h</span>`}).join('');
+  return [...g.entries()].sort((a,b)=>{const ai=order.indexOf(a[0]),bi=order.indexOf(b[0]);return (ai<0?99:ai)-(bi<0?99:bi)||b[1]-a[1]}).map(([k,h])=>{const t=treatmentTone114(k);return `<span style="display:inline-block;margin:0 6px 6px 0;padding:5px 8px;border-radius:12px;border:1px solid ${t.bd};background:${t.bg};color:${t.fg};font-size:12px;line-height:12px;font-weight:800">${esc(k)} · ${Math.round(h*100)/100} h</span>`}).join('');
 }
 function flatEventCard114(e,p){
   const label=(()=>{try{return FLAT_TYPES.find(x=>x.id===e.type)?.label||e.type||'Flat Time'}catch(_){return e.type||'Flat Time'}})(),hours=Math.round(eventHours114(e)*100)/100,treat=String(e.commercial||'Por definir').trim()||'Por definir';
   const detail=(()=>{try{return typeof eventDetailSummary==='function'?eventDetailSummary(e):String(e.description||'')}catch(_){return String(e.description||'')}})();
   const start=fmtEventMoment114(e.start),endValue=e.ongoing?(p?.end||e.end):e.end,end=fmtEventMoment114(endValue),endWord=e.ongoing?'Corte':'Fin';
-  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:8px;border:1px solid #f0d3d5;background:#fffafa"><tr><td width="5" style="width:5px;background:#d92d3a;font-size:1px">&nbsp;</td><td style="padding:10px 11px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td valign="middle" style="font-size:13px;line-height:17px;font-weight:800;color:#9f1d29">${hours} h · ${esc(label)}</td><td align="right" valign="middle">${treatmentBadge114(treat)}</td></tr></table><div style="font-size:11px;line-height:16px;color:#344054;margin-top:5px"><b>Inicio:</b> ${esc(start)} &nbsp;→&nbsp; <b>${endWord}:</b> ${esc(end)}${e.ongoing?' <span style="color:#6840a5;font-weight:800">· CONTINÚA ACTIVO</span>':''}</div><div style="font-size:11px;line-height:16px;color:#475467;margin-top:3px">${e.responsibility?`<b>Responsabilidad:</b> ${esc(e.responsibility)}`:'<b>Responsabilidad:</b> —'}${e.affected?` &nbsp;·&nbsp; <b>Afecta:</b> ${esc(e.affected)}`:''}${e.company?` &nbsp;·&nbsp; <b>Compañía:</b> ${esc(e.company)}`:''}</div>${detail?`<div style="font-size:12px;line-height:17px;color:#344054;margin-top:5px">${esc(detail)}</div>`:''}</td></tr></table>`;
+  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:8px;border:1px solid #f0d3d5;background:#fffafa"><tr><td width="5" style="width:5px;background:#d92d3a;font-size:1px">&nbsp;</td><td style="padding:10px 11px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td valign="middle" style="font-size:13px;line-height:17px;font-weight:800;color:#9f1d29">${hours} h · ${esc(label)}</td><td align="right" valign="middle">${treatmentBadge114(treat)}</td></tr></table><div style="font-size:12px;line-height:16px;color:#344054;margin-top:5px"><b>Inicio:</b> ${esc(start)} &nbsp;→&nbsp; <b>${endWord}:</b> ${esc(end)}${e.ongoing?' <span style="color:#6840a5;font-weight:800">· CONTINÚA ACTIVO</span>':''}</div><div style="font-size:12px;line-height:16px;color:#475467;margin-top:3px">${e.responsibility?`<b>Responsabilidad:</b> ${esc(e.responsibility)}`:'<b>Responsabilidad:</b> —'}${e.affected?` &nbsp;·&nbsp; <b>Afecta:</b> ${esc(e.affected)}`:''}${e.company?` &nbsp;·&nbsp; <b>Compañía:</b> ${esc(e.company)}`:''}</div>${detail?`<div style="font-size:12px;line-height:17px;color:#344054;margin-top:5px">${esc(detail)}</div>`:''}</td></tr></table>`;
 }
 function flatSection114(p,c){
   const events=(c?.flatEvents||[]);let fs;try{fs=typeof flatSummary==='function'?flatSummary(events,p):{net:events.reduce((a,e)=>a+eventHours114(e),0),work:0}}catch(_){fs={net:events.reduce((a,e)=>a+eventHours114(e),0),work:0}}
   const summary=flatTreatmentSummary114(events),cards=events.slice(0,4).map(e=>flatEventCard114(e,p)).join('');
-  const sectionHead=`<tr><td style="padding:20px 24px 8px"><div style="font-size:11px;line-height:14px;font-weight:700;letter-spacing:.08em;color:#667085;text-transform:uppercase">5. Flat Time / Desviaciones</div></td></tr>`;
+  const sectionHead=`<tr><td style="padding:20px 24px 8px"><div style="font-size:12px;line-height:14px;font-weight:700;letter-spacing:.08em;color:#667085;text-transform:uppercase">5. Flat Time / Desviaciones</div></td></tr>`;
   const net=Math.round(Number(fs.net||0)*100)/100,work=Math.round(Number(fs.work||0)*100)/100;
-  return `${sectionHead}<tr><td style="padding:0 24px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${net>0?'#fff8f0':'#f1faf5'};border:1px solid ${net>0?'#f3d7b2':'#d0eadc'}"><tr><td style="padding:11px 12px;font-size:13px;color:#17202a"><b>Flat Time neto: ${net} h</b> · Trabajo efectivo Move: ${work} h</td></tr></table>${summary?`<div style="margin-top:8px"><div style="font-size:10px;line-height:14px;color:#667085;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Tratamiento · horas registradas</div>${summary}</div>`:''}${cards||'<div style="font-size:12px;color:#667085;margin-top:7px">Sin Flat Time registrado.</div>'}${events.length>4?`<div style="font-size:11px;color:#667085;font-weight:700;margin-top:6px">+ ${events.length-4} eventos adicionales en OPS</div>`:''}</td></tr>`;
+  return `${sectionHead}<tr><td style="padding:0 24px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${net>0?'#fff8f0':'#f1faf5'};border:1px solid ${net>0?'#f3d7b2':'#d0eadc'}"><tr><td style="padding:11px 12px;font-size:13px;color:#17202a"><b>Flat Time neto: ${net} h</b> · Trabajo efectivo Move: ${work} h</td></tr></table>${summary?`<div style="margin-top:8px"><div style="font-size:12px;line-height:14px;color:#667085;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Tratamiento · horas registradas</div>${summary}</div>`:''}${cards||'<div style="font-size:12px;color:#667085;margin-top:7px">Sin Flat Time registrado.</div>'}${events.length>4?`<div style="font-size:12px;color:#667085;font-weight:700;margin-top:6px">+ ${events.length-4} eventos adicionales en OPS</div>`:''}</td></tr>`;
 }
 function enhanceEmailReporting114(html,m,p,c){
   let h=String(html||'');const a=h.indexOf('5. Flat Time / Desviaciones'),b=h.indexOf('6. Próximas 24 Hrs');if(a<0||b<=a)return h;
@@ -3472,8 +3528,8 @@ function renderFrozenEmail114(m,p,c){
   if(typeof inner!=='string'||!inner.trim())throw new Error('RigGO no pudo generar el contenido del Daily Move Update.');
   inner=enhanceEmailReporting114(inner,m,p,c);
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
-body{margin:0;background:#f3f5f7;font-family:Arial,Helvetica,sans-serif;color:#17202a}.email{max-width:920px;margin:0 auto;background:#fff;padding:24px;color:#17202a}.email h2{margin:0;font-size:21px}.email h3{font-size:14px;color:#17365d;margin:19px 0 8px}.email table{width:100%;border-collapse:collapse;font-size:12px}.email th,.email td{padding:7px 8px;border:1px solid #e0e5ea;text-align:left;vertical-align:top}.email th{background:#eef3f8;color:#17365d}.mail-head{border-left:5px solid #35c46a;padding-left:13px}.mail-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:13px 0}.mail-meta div{background:#f5f7fa;border:1px solid #e1e6ea;border-radius:7px;padding:8px}.mail-meta span{display:block;font-size:9px;color:#667085;text-transform:uppercase}.mail-meta b{font-size:12px}.mail-chart-panel{background:#050505;color:white;border-radius:5px;padding:9px;margin-top:10px}.mail-chart-panel img{width:100%;height:auto;display:block}.email-photo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.email-photo-grid img{width:100%;height:auto;border-radius:4px}.email-event{padding:8px 0;border-bottom:1px solid #edf0f2}.email-badge{display:inline-block;border-radius:999px;padding:3px 7px;font-size:9px;font-weight:bold;background:#eef2f7}.email-badge.ex{background:#fff1cd;color:#795c00}.email-badge.bill{background:#def7e7;color:#126b36}
-.email.v44-email{max-width:920px!important;margin:0 auto!important;border-radius:0!important;padding:24px!important;background:#fff!important;color:#17202a!important}.v44-email .v44-mail-meta{width:100%!important;border-collapse:separate!important;border-spacing:6px!important;margin:8px -6px 14px!important}.v44-email .v44-mail-meta td{width:33.333%!important;background:#f5f7fa!important;border:1px solid #e1e6ea!important;border-radius:7px!important;padding:9px 10px!important;vertical-align:top!important}.v44-email .v44-label{display:block!important;font-size:9px!important;color:#667085!important;text-transform:uppercase!important;letter-spacing:.04em!important;margin-bottom:3px!important}.v44-email .v44-value{display:block!important;font-size:12px!important;color:#17202a!important;font-weight:700!important;line-height:1.35!important}.v44-email .v44-phase-note{font-size:11px!important;color:#475467!important;line-height:1.38!important}.v44-email .v44-schedule-summary{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important}.v44-email .v44-schedule-box{border:1px solid #e1e6ea!important;border-radius:7px!important;padding:9px!important}.v44-email .v44-schedule-box.advance{background:#f0faf4!important;color:#126b36!important}.v44-email .v44-schedule-box.pending{background:#fff4f4!important;color:#9f1d29!important}
+body{margin:0;background:#f3f5f7;font-family:Arial,Helvetica,sans-serif;color:#17202a}.email{max-width:920px;margin:0 auto;background:#fff;padding:24px;color:#17202a}.email h2{margin:0;font-size:21px}.email h3{font-size:14px;color:#17365d;margin:19px 0 8px}.email table{width:100%;border-collapse:collapse;font-size:14px}.email th,.email td{padding:7px 8px;border:1px solid #e0e5ea;text-align:left;vertical-align:top}.email th{background:#eef3f8;color:#17365d}.mail-head{border-left:5px solid #35c46a;padding-left:13px}.mail-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:13px 0}.mail-meta div{background:#f5f7fa;border:1px solid #e1e6ea;border-radius:7px;padding:8px}.mail-meta span{display:block;font-size:12px;color:#667085;text-transform:uppercase}.mail-meta b{font-size:12px}.mail-chart-panel{background:#050505;color:white;border-radius:5px;padding:9px;margin-top:10px}.mail-chart-panel img{width:100%;height:auto;display:block}.email-photo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.email-photo-grid img{width:100%;height:auto;border-radius:4px}.email-event{padding:8px 0;border-bottom:1px solid #edf0f2}.email-badge{display:inline-block;border-radius:999px;padding:3px 7px;font-size:12px;font-weight:bold;background:#eef2f7}.email-badge.ex{background:#fff1cd;color:#795c00}.email-badge.bill{background:#def7e7;color:#126b36}
+.email.v44-email{max-width:920px!important;margin:0 auto!important;border-radius:0!important;padding:24px!important;background:#fff!important;color:#17202a!important}.v44-email .v44-mail-meta{width:100%!important;border-collapse:separate!important;border-spacing:6px!important;margin:8px -6px 14px!important}.v44-email .v44-mail-meta td{width:33.333%!important;background:#f5f7fa!important;border:1px solid #e1e6ea!important;border-radius:7px!important;padding:9px 10px!important;vertical-align:top!important}.v44-email .v44-label{display:block!important;font-size:12px!important;color:#667085!important;text-transform:uppercase!important;letter-spacing:.04em!important;margin-bottom:3px!important}.v44-email .v44-value{display:block!important;font-size:12px!important;color:#17202a!important;font-weight:700!important;line-height:1.35!important}.v44-email .v44-phase-note{font-size:12px!important;color:#475467!important;line-height:1.38!important}.v44-email .v44-schedule-summary{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important}.v44-email .v44-schedule-box{border:1px solid #e1e6ea!important;border-radius:7px!important;padding:9px!important}.v44-email .v44-schedule-box.advance{background:#f0faf4!important;color:#126b36!important}.v44-email .v44-schedule-box.pending{background:#fff4f4!important;color:#9f1d29!important}
 @media(max-width:640px){.mail-meta{grid-template-columns:1fr 1fr}.email{padding:14px}.email-photo-grid{grid-template-columns:1fr}.email.v44-email{padding:14px!important}.v44-email .v44-mail-meta,.v44-email .v44-mail-meta tbody,.v44-email .v44-mail-meta tr{display:block!important;margin:8px 0 12px!important}.v44-email .v44-mail-meta td{display:block!important;width:auto!important;margin-bottom:5px!important}.v44-email .v44-schedule-summary{grid-template-columns:1fr!important}}
 </style></head><body>${inner}</body></html>`;
 }
@@ -3559,7 +3615,7 @@ async function persistSentMetadata(record,response){
   try{
     const periodId=await window.RigGOReportV12.ensureDbPeriod(m,p);c.dbPeriodId=periodId;
     await window.RigGOReportV12.saveClosureRecord(m,p,c,periodId);
-    let opsPath=c.opsStoragePath||record.opsStoragePath||'';
+    let opsPath=record.opsStoragePath||'';
     const ops=record.payload?.attachments?.find(x=>/OPS-F0065/i.test(x.filename||''));
     if(!opsPath&&ops?.content){
       opsPath=`${m.id}/periods/${periodId}/reports/${ops.filename}`;
@@ -3581,8 +3637,9 @@ async function persistSentMetadata(record,response){
 function applySentToLocal(record,response){
   const {m,c}=closureFor(record);if(!m||!c)return;
   c.sentAt=record.sentAt||now();c.sendStatus='sent';c.messageId=response.messageId||record.messageId||'';c.emailOutboxId=record.key;c.reportPhotoCount=record.photoCount||0;c.reportHadSignature=!!record.hadSignature;
-  // Only clear raw evidence after provider ACK. The frozen outbox payload already contains the evidence sent.
-  c.photos=[];c.photoCaptions=[];c.signature='';delete c.emailQueuedAt;delete c.emailLastError;
+  // Keep editable evidence after ACK. The sent outbox record remains an immutable snapshot.
+  c.sentReportFingerprint=record.reportFingerprint||window.RigGO124?.reportFingerprint?.(c)||'';
+  delete c.emailQueuedAt;delete c.emailLastError;
   try{save()}catch(_){try{saveLocal()}catch(__){}}
 }
 function applyPendingToLocal(record){
@@ -3608,7 +3665,7 @@ async function processEmailRecord(record,{manual=false}={}){
     record.status='sent';record.sentAt=now();record.messageId=response.messageId||'';record.lastError='';record.providerStatus=0;record.providerCode='';record.nextAttemptAt='';
     const payloadForMeta={to:record.payload.to,cc:record.payload.cc,subject:record.payload.subject,replyTo:record.payload.replyTo};
     const metaOk=await persistSentMetadata(record,response);
-    if(metaOk)record.payload=payloadForMeta;await mailPut(record);applySentToLocal(record,response);patchMailUi114(record);
+    await mailPut(record);applySentToLocal(record,response);patchMailUi114(record);
     try{toast('Daily Move Update enviado ✓')}catch(_){ }
   }catch(e){
     record.lastError=String(e?.message||e);record.lastErrorAt=now();record.providerStatus=Number(e?.providerStatus||e?.status||0)||0;record.providerCode=String(e?.providerCode||'');record.errorKind=String(e?.kind||'');
@@ -3648,7 +3705,7 @@ async function drainEmailOutbox({onlyKey=null,manual=false}={}){
     let sent=0,pending=0,errors=0;
     for(const row of rows){const r=await processEmailRecord(row,{manual});if(r.status==='sent')sent++;else if(r.status==='error')errors++;else pending++}
     for(const row of all.filter(x=>x.status==='sent'&&x.metadataError&&x.payload?.attachments?.length)){
-      const ok=await persistSentMetadata(row,{messageId:row.messageId});if(ok){row.payload={to:row.payload.to,cc:row.payload.cc,subject:row.payload.subject,replyTo:row.payload.replyTo};await mailPut(row)}
+      const ok=await persistSentMetadata(row,{messageId:row.messageId});if(ok){await mailPut(row)}
     }
     return {ok:errors===0,sent,pending,errors};
   })().finally(()=>{mailDrainPromise=null});
@@ -3656,6 +3713,8 @@ async function drainEmailOutbox({onlyKey=null,manual=false}={}){
 }
 
 async function buildFrozenEmail(m,p,c,to,cc,version){
+  await window.RigGOV120?.restoreMediaForMove?.(m,p.id);
+  await window.RigGO124Media?.commit?.(m,c);
   const originals=(c.photos||[]).slice();
   const [photos,pdf,progressPng]=await Promise.all([
     Promise.all(originals.slice(0,2).map(x=>photoPrepare(x))),
@@ -3673,19 +3732,19 @@ async function buildFrozenEmail(m,p,c,to,cc,version){
   const media=validateEmailMedia114(html,attachments);
   return {
     payload:{to,cc,subject:subject114(m,p),html,replyTo:userEmail()||undefined,attachments},
-    opsName,photoCount:photos.filter(Boolean).length,hadSignature:!!c.signature,version,media,emailRendererVersion:EMAIL_RENDERER_VERSION
+    opsName,photoCount:photos.filter(Boolean).length,hadSignature:!!c.signature,version,media,reportFingerprint:window.RigGO124?.reportFingerprint?.(c)||'',emailRendererVersion:EMAIL_RENDERER_VERSION
   }
 }
 
 async function ensureRendererCurrent114(record){
   if(!record||record.status==='sent'||Number(record.emailRendererVersion||0)>=EMAIL_RENDERER_VERSION)return record;
-  const {m,p,c}=closureFor(record);if(!m||!p||!c||!record.payload)return record;
-  const attachments=clone(record.payload.attachments||[]),progress=await progressPng114(m,p);let found=false;
-  for(let i=0;i<attachments.length;i++){const id=String(attachments[i]?.contentId||attachments[i]?.content_id||'').replace(/^<|>$/g,'');if(id==='riggo-progress'){attachments[i]={...attachments[i],filename:`RigGO_Progress_${safePart(m.meta.rig)}_Dia${p.index}.png`,content:b64(progress),contentId:'riggo-progress',contentType:'image/png'};found=true}}
-  if(!found)attachments.push({filename:`RigGO_Progress_${safePart(m.meta.rig)}_Dia${p.index}.png`,content:b64(progress),contentId:'riggo-progress',contentType:'image/png'});
-  const photoAttachments=attachments.filter(a=>/^photo-\d+$/i.test(String(a?.contentId||a?.content_id||'').replace(/^<|>$/g,''))),ec={...clone(c),photos:photoAttachments.map((_,i)=>`outbox-photo-${i+1}`),photoCaptions:(c.photoCaptions||[]).slice(0,photoAttachments.length),siteSupervisorRole:c.siteSupervisorRole||'Rig Manager'};
-  const html=renderFrozenEmail114(m,p,ec),media=validateEmailMedia114(html,attachments),deliveryId=uuidMail114();
-  record.payload={...record.payload,html,attachments};record.media=media;record.emailRendererVersion=EMAIL_RENDERER_VERSION;record.schemaVersion=3;record.rendererMigratedAt=now();record.deliveryId=deliveryId;record.idempotencyKey=('riggo-email-'+deliveryId).slice(0,250);record.status='pending';record.attempts=0;record.lastError='';record.providerStatus=0;record.providerCode='';record.errorKind='';record.nextAttemptAt='';
+  const {m,p,c}=closureFor(record);
+  if(!m||!p||!c||!record.payload)throw mailError114('Reabre el reporte y vuelve a prepararlo con la versión 12.4.2 antes de enviar.',{retryable:false,kind:'report'});
+  const frozen=await buildFrozenEmail(m,p,c,record.payload.to||[],record.payload.cc||[],record.version||1),deliveryId=uuidMail114();
+  // Refresh HTML, chart and OPS together. Already-sent snapshots return above.
+  Object.assign(record,frozen,{schemaVersion:3,rendererMigratedAt:now(),deliveryId,
+    idempotencyKey:('riggo-email-'+deliveryId).slice(0,250),status:'pending',attempts:0,
+    lastError:'',providerStatus:0,providerCode:'',errorKind:'',nextAttemptAt:''});
   await mailPut(record);applyPendingToLocal(record);return record;
 }
 
@@ -3867,7 +3926,7 @@ const dirty=new Set(), observed=new Map();
 const clone=v=>{try{return structuredClone(v)}catch(_){return JSON.parse(JSON.stringify(v))}};
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():`op-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const online=()=>navigator.onLine!==false;
-const transportError=e=>navigator.onLine===false||/failed to fetch|networkerror|network request failed|load failed|timeout|connection (?:lost|reset|refused)|offline/i.test(String(e?.message||e?.details||e?.hint||e||''));
+const transportError=e=>W.RigGOSyncRetry1238.transient(e);
 const staleRunError=x=>/stale_execution_run/i.test(String(x?.code||x?.message||x?.details||x?.error||x||''));
 const editorActive=()=>{const e=document.activeElement;return !!e&&(/^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName)||e.isContentEditable)};
 function openDb(){if(dbp)return dbp;dbp=new Promise((res,rej)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains(STORE))d.createObjectStore(STORE,{keyPath:'moveId'})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});return dbp}
@@ -3877,13 +3936,13 @@ async function all(){const d=await openDb(),t=d.transaction(STORE,'readonly');re
 async function put(v){const d=await openDb();return new Promise((res,rej)=>{const t=d.transaction(STORE,'readwrite');t.objectStore(STORE).put(v);t.oncomplete=()=>res(v);t.onerror=()=>rej(t.error)})}
 async function del(id){const d=await openDb();return new Promise((res,rej)=>{const t=d.transaction(STORE,'readwrite');t.objectStore(STORE).delete(id);t.oncomplete=()=>res();t.onerror=()=>rej(t.error)})}
 function compactLoadHistory122F5(list){if(!Array.isArray(list)||list.length<2)return Array.isArray(list)?list:[];const seen=new Set(),out=[];for(const h of list){if(!h||typeof h!=='object'){out.push(h);continue}const c={...h};delete c.id;const k=stable(c);if(seen.has(k))continue;seen.add(k);out.push(h)}return out}
-function sanitizeExec(m){const e=clone(m?.exec||{});delete e.selectedPeriodId;delete e.loadScope;e.periods=[];for(const list of [e.tasksRD,e.tasksRU,e.loads])for(const x of (Array.isArray(list)?list:[])){if(Array.isArray(x.history))x.history=compactLoadHistory122F5(x.history);delete x._historyMigrated;if(x.isUnplanned!==true)delete x.isUnplanned}for(const c of Object.values(e.closures||{})){if(!c)continue;c.photos=[];c.signature='';if(Array.isArray(c.participants))c.participants=c.participants.map(p=>({...p,signature:''}));delete c.opsPdfBlob;delete c.__loadedPhotoPaths;delete c.__loadedSignaturePath}return e}
+function sanitizeExec(m){const e=clone(m?.exec||{});delete e.selectedPeriodId;delete e.loadScope;e.periods=[];for(const list of [e.tasksRD,e.tasksRU,e.loads])for(const x of (Array.isArray(list)?list:[])){if(Array.isArray(x.history))x.history=compactLoadHistory122F5(x.history);delete x._historyMigrated;if(x.isUnplanned!==true)delete x.isUnplanned}for(const c of Object.values(e.closures||{})){if(!c)continue;c.photos=[];c.signature='';if(Array.isArray(c.participants))c.participants=c.participants.map(p=>({...p,signature:''}));delete c.opsPdfBlob;delete c.__loadedPhotoPaths;delete c.__loadedSignaturePath;delete c.__signatureUploadPending;delete c.__mediaSaving;delete c.__mediaError}return e}
 const stable=v=>JSON.stringify(v);
 function fp(m){return stable(sanitizeExec(m))}
 function observe(m){if(!m?.id)return;observed.set(m.id,fp(m));dirty.delete(m.id)}
 function observeAll(){for(const m of state?.moves||[])observe(m)}
 function merge3(base,local,remote){if(stable(local)===stable(base))return clone(remote);if(stable(remote)===stable(base))return clone(local);if(Array.isArray(local)||Array.isArray(remote)||Array.isArray(base)){const arr=x=>Array.isArray(x)?x:[],key=(x,i)=>String(x?.id??x?.seq??`${x?.day||''}|${x?.text||x?.description||''}|${i}`),bm=new Map(arr(base).map((x,i)=>[key(x,i),x])),lm=new Map(arr(local).map((x,i)=>[key(x,i),x])),rm=new Map(arr(remote).map((x,i)=>[key(x,i),x]));return [...new Set([...bm.keys(),...lm.keys(),...rm.keys()])].map(k=>merge3(bm.get(k),lm.get(k),rm.get(k))).filter(v=>v!==undefined)}const obj=x=>x&&typeof x==='object';if(obj(local)&&obj(remote)&&obj(base)){const out={},ks=new Set([...Object.keys(base||{}),...Object.keys(local||{}),...Object.keys(remote||{})]);for(const k of ks)out[k]=merge3(base?.[k],local?.[k],remote?.[k]);return out}return clone(remote===undefined?local:remote)}
-function preserveMedia(server,local){server=server||{};server.closures=server.closures||{};for(const [id,lc] of Object.entries(local?.closures||{})){const sc=server.closures?.[id];if(!sc)continue;if((lc.photos||[]).length)sc.photos=clone(lc.photos);if(lc.signature)sc.signature=lc.signature;if(Array.isArray(lc.participants)&&Array.isArray(sc.participants))sc.participants.forEach((p,i)=>{if(lc.participants[i]?.signature)p.signature=lc.participants[i].signature})}if(local?.selectedPeriodId!=null)server.selectedPeriodId=local.selectedPeriodId;if(local?.loadScope!=null)server.loadScope=local.loadScope;return server}
+function preserveMedia(server,local){server=server||{};server.closures=server.closures||{};for(const [id,lc] of Object.entries(local?.closures||{})){const sc=server.closures?.[id];if(!sc)continue;if((lc.photos||[]).length){sc.photos=clone(lc.photos);if(stable(sc.photoStoragePaths||[])===stable(lc.photoStoragePaths||[]))sc.__loadedPhotoPaths=clone(lc.__loadedPhotoPaths||[])}if(lc.signature){sc.signature=lc.signature;if(sc.signatureStoragePath===lc.signatureStoragePath)sc.__loadedSignaturePath=lc.__loadedSignaturePath}if(lc.__signatureUploadPending)sc.__signatureUploadPending=true;if(Array.isArray(lc.participants)&&Array.isArray(sc.participants))sc.participants.forEach((p,i)=>{if(lc.participants[i]?.signature)p.signature=lc.participants[i].signature})}if(local?.selectedPeriodId!=null)server.selectedPeriodId=local.selectedPeriodId;if(local?.loadScope!=null)server.loadScope=local.loadScope;return server}
 async function readRows(ids){if(!SB||!ids.length)return[];const {data,error}=await SB.rpc('riggo_execution_read_c4',{p_move_ids:ids});if(error)throw error;return data||[]}
 function allowed(m){return !!m&&!m._resetInProgress&&['active','closed'].includes(String(m.status||''))}
 function evidence(payload){const e=payload?.exec?payload.exec:(payload||{});let n=0;for(const list of [e.tasksRD,e.tasksRU])for(const x of (Array.isArray(list)?list:[]))if(String(x?.doneAt||'').trim())n++;for(const x of (Array.isArray(e.loads)?e.loads:[]))if(String(x?.loadedAt||x?.transitAt||x?.positionedAt||'').trim())n++;for(const c of Object.values(e.closures||{})){if(!c)continue;const reported=c.reported||{};if(Object.keys(c).some(k=>!['photos','signature','participants','photoStoragePaths','signatureStoragePath'].includes(k)&&c[k]!==''&&c[k]!=null&&(!(Array.isArray(c[k]))||c[k].length)&&(!(typeof c[k]==='object'&&!Array.isArray(c[k]))||Object.keys(c[k]||{}).length)))n++;if(['rd','rm','ru'].some(k=>Number(reported?.[k]||0)>0))n++}return n}
@@ -3891,11 +3950,70 @@ function recoveryCandidate(m,serverPayload,pending,serverResolved=false){const l
 async function recoverFromLocal(m){if(!m?.id||!m.execRecovery?.required)throw new Error('No hay recuperación pendiente.');const payload=sanitizeExec(m),expected=Number(m.execSyncMeta?.revision)||0;const {data,error}=await SB.rpc('riggo_execution_recover_c4',{p_move_id:m.id,p_payload:payload,p_expected_revision:expected,p_operation_id:uuid()});if(error)throw error;if(!data?.ok)throw new Error(data?.message||data?.code||'No fue posible recuperar la ejecución.');m.exec=preserveMedia(clone(data.execution_payload||payload),m.exec||{});m.execSyncMeta={revision:Number(data.revision)||expected+1,lastServerFingerprint:stable(data.execution_payload||payload),lastServerPayload:clone(data.execution_payload||payload),updatedAt:data.updated_at||'',updatedBy:data.updated_by||'',c4Resolved:true};m.execRecovery=null;try{await del(m.id)}catch(_){};dirty.delete(m.id);observe(m);try{saveLocal()}catch(_){};return data}
 function dataUrlBlob(src){const m=String(src||'').match(/^data:([^;,]+)?(;base64)?,(.*)$/s);if(!m)throw new Error('Formato de media no válido.');const mime=m[1]||'application/octet-stream',raw=m[2]?atob(m[3]):decodeURIComponent(m[3]),a=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i);return new Blob([a],{type:mime})}
 function blobDataUrl(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error||new Error('No fue posible leer media.'));r.readAsDataURL(blob)})}
-async function syncClosureMedia(moveId,closureId){if(!online()||!SB)return{ok:false,offline:true};const m=(state.moves||[]).find(x=>x.id===moveId),c=m?.exec?.closures?.[closureId];if(!m||!c)return{ok:false,missing:true};c.photoStoragePaths=Array.isArray(c.photoStoragePaths)?c.photoStoragePaths:[];let changed=false;for(let i=0;i<(c.photos||[]).length;i++){if(c.photoStoragePaths[i]||!String(c.photos[i]||'').startsWith('data:'))continue;const blob=dataUrlBlob(c.photos[i]),ext=(blob.type||'image/jpeg').includes('png')?'png':'jpg',path=`${moveId}/execution/${closureId}/photos/${uuid()}.${ext}`;const up=await SB.storage.from('riggo-files').upload(path,blob,{contentType:blob.type||'image/jpeg',upsert:false,cacheControl:'3600'});if(up.error)throw up.error;c.photoStoragePaths[i]=path;changed=true}if(c.signature&&String(c.signature).startsWith('data:')){const path=c.signatureStoragePath||`${moveId}/execution/${closureId}/signature.png`,blob=dataUrlBlob(c.signature),up=await SB.storage.from('riggo-files').upload(path,blob,{contentType:'image/png',upsert:true,cacheControl:'3600'});if(up.error)throw up.error;if(c.signatureStoragePath!==path){c.signatureStoragePath=path;changed=true}}if(changed){markDirty(m);await persistNow(m)}return{ok:true,changed}}
+async function syncClosureMedia(moveId,closureId,{manual=false}={}){
+  const m=(state.moves||[]).find(x=>x.id===moveId),c=m?.exec?.closures?.[closureId];
+  if(!m||!c)return{ok:false,missing:true};
+  const M=W.RigGO124Media;await M?.commit?.(m,c);
+  if(!online()||!SB)return{ok:false,offline:true};
+  const ready=await M?.canSync?.(m,c,manual);if(ready===false)return{ok:false,deferred:true};
+  if(M?.inFlight?.has(moveId+'|'+closureId))return M.inFlight.get(moveId+'|'+closureId);
+  const run=String(m.exec?._riggoRunId||''),current=()=>state.moves.find(x=>x.id===moveId)?.exec;
+  const work=(async()=>{try{
+    c.photoStoragePaths=Array.isArray(c.photoStoragePaths)?c.photoStoragePaths:[];let changed=false;
+    const pending=(c.photos||[]).map((src,i)=>({src,i,mediaId:c.photoMediaIds?.[i]})).filter(x=>!c.photoStoragePaths[x.i]&&String(x.src).startsWith('data:'));
+    for(const {src,i,mediaId} of pending){
+      const blob=dataUrlBlob(src),ext=(blob.type||'').includes('png')?'png':'jpg',path=`${moveId}/execution/${closureId}/photos/${uuid()}.${ext}`;
+      const up=await SB.storage.from('riggo-files').upload(path,blob,{contentType:blob.type||'image/jpeg',upsert:false,cacheControl:'3600'});if(up.error)throw up.error;
+      if(String(current()?._riggoRunId||'')!==run)return{ok:false,stale:true};
+      const lc=current()?.closures?.[closureId],at=mediaId?lc?.photoMediaIds?.indexOf(mediaId):i;if(at>=0&&lc?.photos?.[at]===src){lc.photoStoragePaths=lc.photoStoragePaths||[];lc.photoStoragePaths[at]=path;changed=true}
+    }
+    const lc=current()?.closures?.[closureId];
+    if(lc?.signature&&String(lc.signature).startsWith('data:')&&(!lc.signatureStoragePath||lc.__signatureUploadPending)){
+      const src=lc.signature,path=`${moveId}/execution/${closureId}/signatures/${uuid()}.png`,blob=dataUrlBlob(src);
+      const up=await SB.storage.from('riggo-files').upload(path,blob,{contentType:blob.type||'image/png',upsert:false,cacheControl:'3600'});if(up.error)throw up.error;
+      if(String(current()?._riggoRunId||'')!==run)return{ok:false,stale:true};
+      const live=current()?.closures?.[closureId];if(live?.signature===src){live.signatureStoragePath=path;live.__loadedSignaturePath=path;live.__signatureUploadPending=false;changed=true}
+    }
+    const live=current()?.closures?.[closureId];if(!live)return{ok:false,missing:true};
+    live.__loadedPhotoPaths=clone(live.photoStoragePaths||[]);
+    await M?.commit?.(m,live);let ack={ok:true};
+    if(changed){markDirty(m);ack=await persistNow(m);}
+    await M?.ack?.(m,live,!!ack.ok);return{...ack,changed};
+  }catch(e){await M?.fail?.(m,current()?.closures?.[closureId]||c,e);throw e}finally{M?.inFlight?.delete(moveId+'|'+closureId)}})();
+  M?.inFlight?.set(moveId+'|'+closureId,work);return work;
+}
 async function removeMediaPath(path){if(!path||!online()||!SB)return;const {error}=await SB.storage.from('riggo-files').remove([path]);if(error)console.warn('RigGO C4 media remove',error)}
-async function restoreClosureMedia(m,c){if(!SB||!online()||!c)return;const paths=Array.isArray(c.photoStoragePaths)?c.photoStoragePaths.filter(Boolean):[];if(paths.length){const localPaths=Array.isArray(c.__loadedPhotoPaths)?c.__loadedPhotoPaths:[];if(stable(localPaths)!==stable(paths)){const photos=[];for(const path of paths){const {data,error}=await SB.storage.from('riggo-files').download(path);if(error)throw error;photos.push(await blobDataUrl(data))}c.photos=photos;c.__loadedPhotoPaths=clone(paths)}}if(c.signatureStoragePath&&c.__loadedSignaturePath!==c.signatureStoragePath){const {data,error}=await SB.storage.from('riggo-files').download(c.signatureStoragePath);if(error)throw error;c.signature=await blobDataUrl(data);c.__loadedSignaturePath=c.signatureStoragePath}}
-async function restoreMediaForMove(m){for(const c of Object.values(m?.exec?.closures||{}))try{await restoreClosureMedia(m,c)}catch(e){console.warn('RigGO C4 media hydrate',e)}}
-async function syncAllMedia(){if(!online()||!SB)return;for(const m of state?.moves||[])for(const [closureId,c] of Object.entries(m?.exec?.closures||{})){const missingPhoto=(c?.photos||[]).some((x,i)=>String(x||'').startsWith('data:')&&!c?.photoStoragePaths?.[i]),signaturePending=!!c?.signature&&String(c.signature).startsWith('data:')&&!c?.signatureStoragePath;if(missingPhoto||signaturePending)try{await syncClosureMedia(m.id,closureId)}catch(e){console.warn('RigGO C4 media background sync',e)}}}
+async function restoreClosureMedia(m,c){
+  if(!c)return;await W.RigGO124Media?.restore?.(m,c);
+  if(!SB||!online())return;
+  const paths=Array.isArray(c.photoStoragePaths)?c.photoStoragePaths:[],photos=[];
+  for(let i=0;i<paths.length;i++){
+    const path=paths[i];if(!path){photos[i]=c.photos?.[i]||'';continue}
+    if(c.photos?.[i]&&c.__loadedPhotoPaths?.[i]===path){photos[i]=c.photos[i];continue}
+    const {data,error}=await SB.storage.from('riggo-files').download(path);if(error)throw error;
+    photos[i]=await blobDataUrl(data);
+  }
+  if(paths.length){c.photos=photos.filter(Boolean);c.__loadedPhotoPaths=clone(paths)}
+  if(c.signatureStoragePath&&(!c.signature||c.__loadedSignaturePath!==c.signatureStoragePath)&&!c.__signatureUploadPending){
+    const {data,error}=await SB.storage.from('riggo-files').download(c.signatureStoragePath);if(error)throw error;
+    c.signature=await blobDataUrl(data);c.__loadedSignaturePath=c.signatureStoragePath;
+  }
+  await W.RigGO124Media?.commit?.(m,c,{restored:true});
+}
+async function restoreMediaForMove(m,closureId){
+  if(!m||(!closureId&&m.id!==state?.selectedMoveId))return;
+  const id=closureId||m.exec?.selectedPeriodId;if(!id)return;
+  const c=m.exec?.closures?.[id];if(c)await restoreClosureMedia(m,c);
+}
+async function syncAllMedia(){
+  if(!online()||!SB)return;
+  for(const m of state?.moves||[])for(const [id,c] of Object.entries(m?.exec?.closures||{})){
+    const photo=(c?.photos||[]).some((x,i)=>String(x||'').startsWith('data:')&&!c?.photoStoragePaths?.[i]);
+    const sig=!!c?.signature&&(!c?.signatureStoragePath||c.__signatureUploadPending);
+    if(photo||sig)try{await syncClosureMedia(m.id,id)}catch(e){console.warn('RigGO media pending',e.message||e)}
+  }
+}
+
 function markDirty(m){if(!m?.id||!allowed(m))return false;const cur=fp(m),base=observed.get(m.id);if(base===undefined){observed.set(m.id,cur);dirty.delete(m.id);return false}if(cur!==base){dirty.add(m.id);return true}dirty.delete(m.id);return false}
 function markCurrentDirty(){const id=state?.selectedMoveId,m=(state?.moves||[]).find(x=>x.id===id);return m?markDirty(m):false}
 async function queue(m,{force=false}={}){if(!m?.id||!allowed(m))return null;const payload=sanitizeExec(m),fingerprint=stable(payload),meta=m.execSyncMeta||{},prev=await get(m.id),base=observed.get(m.id);if(prev&&stable(prev.payload)===fingerprint){observed.set(m.id,fingerprint);dirty.add(m.id);return prev}if(!force&&base!==undefined&&fingerprint===base){dirty.delete(m.id);return null}if(!force&&base===undefined){observed.set(m.id,fingerprint);dirty.delete(m.id);return null}const item={moveId:m.id,operationId:uuid(),generation:Number(prev?.generation||0)+1,expectedRevision:Number(prev?.expectedRevision??meta.revision??0),basePayload:clone(prev?.basePayload??meta.lastServerPayload??{}),payload,fingerprint,localFingerprint:fingerprint,createdAt:prev?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()};dirty.add(m.id);await put(item);observed.set(m.id,fingerprint);if(flushP)flushAgain=true;return item}
@@ -3932,20 +4050,103 @@ async function discardKnownStaleOutbox(item,live){
 }
 async function acceptReset(m,data){return adoptRun(m,{payload:data.execution_payload,revision:data.execution_revision,updated_at:data.updated_at,updated_by:data.updated_by})}
 async function rebasePendingAgainstRemote(item,remote){if(runChanged(item.payload,remote.payload)){const m=(state.moves||[]).find(x=>x.id===item.moveId);if(m)await adoptRun(m,remote);else await del(item.moveId);return null}const current=await get(item.moveId),target=current||item,oldBase=clone(target.basePayload||item.basePayload||{});target.payload=merge3(oldBase,target.payload||{},remote.payload||{});target.fingerprint=stable(target.payload);target.localFingerprint=target.fingerprint;target.expectedRevision=Number(remote.revision)||0;target.basePayload=clone(remote.payload||{});target.operationId=uuid();target.generation=Number(target.generation||0)+1;target.rebasedAt=new Date().toISOString();await put(target);observed.set(item.moveId,target.fingerprint);dirty.add(item.moveId);return target}
-async function flushCore(){if(!online()||!SB)return{ok:false,offline:true};let sent=0,conflicts=0,blocked=0,noop=0,round=0;while(round++<20){const items=await all();if(!items.length)break;let progressed=false;for(const original of items){const item=clone(original);const live=(state.moves||[]).find(x=>x.id===item.moveId);if(live?._resetInProgress){blocked++;continue}if(live?.execRecovery?.required){blocked++;continue}
-// 12.3.7: if C4 already knows this outbox belongs to a different run, never send it.
-try{if(await discardKnownStaleOutbox(item,live)){progressed=true;continue}}catch(e){if(transportError(e))return{ok:false,transportFailure:true,error:e,sent,conflicts,blocked,noop};blocked++;continue}
-let response;try{response=await SB.rpc(item.payload?._riggoRunId?'riggo_execution_save_v3':'riggo_execution_save_v2',{p_move_id:item.moveId,p_payload:item.payload,p_expected_revision:item.expectedRevision,p_operation_id:item.operationId})}catch(e){if(transportError(e))return{ok:false,transportFailure:true,error:e,sent,conflicts,blocked,noop};const current=await get(item.moveId);if(current?.operationId===item.operationId){current.blockedCode=e?.code||'rpc_error';current.lastError=e?.message||String(e);current.blockedAt=new Date().toISOString();await put(current)}return{ok:false,transportFailure:false,serverFailure:true,error:e,sent,conflicts,blocked:blocked+1,noop}}
-const data=response?.data;
-if(response?.error){const e=response.error;if(staleRunError(e)){try{if(await reconcileStaleRun(item)){progressed=true;continue}}catch(re){if(transportError(re))return{ok:false,transportFailure:true,error:re,sent,conflicts,blocked,noop}}}if(transportError(e))return{ok:false,transportFailure:true,error:e,sent,conflicts,blocked,noop};const current=await get(item.moveId);if(current?.operationId===item.operationId){current.blockedCode=e?.code||'rpc_error';current.lastError=e?.message||String(e);current.blockedAt=new Date().toISOString();await put(current)}return{ok:false,transportFailure:false,serverFailure:true,error:e,sent,conflicts,blocked:blocked+1,noop}}
-if(staleRunError(data)){try{if(await reconcileStaleRun(item)){progressed=true;continue}}catch(e){if(transportError(e))return{ok:false,transportFailure:true,error:e,sent,conflicts,blocked,noop}}const current=await get(item.moveId);if(current?.operationId===item.operationId){current.blockedCode='stale_execution_run';current.lastError=data?.message||'La Move pertenece a otra corrida. Actualiza RigGO.';current.blockedAt=new Date().toISOString();await put(current)}blocked++;continue}
-if(data?.ok){if(data.no_change)noop++;else sent++;progressed=true;const m=(state.moves||[]).find(x=>x.id===item.moveId),current=await get(item.moveId),same=current?.operationId===item.operationId,liveFp=m?fp(m):'',unchanged=!!m&&liveFp===(item.localFingerprint||item.fingerprint);if(same&&unchanged&&m)m.exec=preserveMedia(clone(item.payload),m.exec||{});applyServerMeta(m,item,data);if(same){await del(item.moveId);if(m&&!unchanged){markDirty(m);await queue(m,{force:true})}else{dirty.delete(item.moveId);if(m)observe(m)}}else if(current){current.expectedRevision=Number(data.revision)||current.expectedRevision;current.basePayload=clone(item.payload);current.rebasedAfterAckAt=new Date().toISOString();await put(current);dirty.add(item.moveId)}continue}
-if(data?.code==='revision_conflict'){conflicts++;const rows=await readRows([item.moveId]),remote=rows[0];if(!remote){blocked++;continue}await rebasePendingAgainstRemote(item,remote);progressed=true;continue}
-const current=await get(item.moveId);if(current?.operationId===item.operationId){current.blockedCode=data?.code||'server_rejected';current.lastError=data?.message||data?.error||'Operación rechazada';current.blockedAt=new Date().toISOString();await put(current)}blocked++}if(!progressed||blocked)break}return{ok:blocked===0,sent,conflicts,blocked,noop,pending:(await all()).length}}
-function flush(){if(flushP){flushAgain=true;return flushP}flushP=(async()=>{let result;do{flushAgain=false;result=await flushCore()}while(flushAgain&&online());return result})().finally(()=>{flushP=null});return flushP}
-async function hydrateCore({renderNow=false}={}){if(!SB||!online()||!state?.auth?.logged)return{ok:false,offline:!online()};if(!document.documentElement.classList.contains('riggo-booting')&&(editorActive()||window.__RIGGO_MEDIA_PICKER_ACTIVE__||window.__RIGGO_FIELD_COMMIT_PENDING__))return{ok:true,deferred:true,reason:window.__RIGGO_MEDIA_PICKER_ACTIVE__?'media-picker':'active-editor'};const moves=state.moves||[],ids=moves.map(m=>m.id),rows=await readRows(ids),by=new Map(rows.map(r=>[r.move_id,r])),pending=new Map((await all()).map(x=>[x.moveId,x]));let changed=false,integrity=0,recovery=0;for(const m of moves){const r=by.get(m.id),old=clone(m.exec||{});let p=pending.get(m.id);const localPayload=sanitizeExec(m),meta=m.execSyncMeta||{};if(r){const serverPayload=clone(r.payload||{});if(runChanged(localPayload,serverPayload)){await adoptRun(m,r);pending.delete(m.id);changed=true;continue}if(p&&runChanged(p.payload,serverPayload)){await adoptRun(m,r);pending.delete(m.id);changed=true;continue}m.execSyncMeta={revision:Number(r.revision)||1,lastServerFingerprint:stable(serverPayload),lastServerPayload:clone(serverPayload),updatedAt:r.updated_at||'',updatedBy:r.updated_by||'',c4Resolved:!!r.c4_resolved};const candidate=recoveryCandidate(m,serverPayload,p,!!r.c4_resolved);if(candidate){candidate.serverRevision=Number(r.revision)||1;m.execRecovery=candidate;recovery++;m.execIntegrity=null;observed.set(m.id,stable(localPayload));dirty.add(m.id);continue}else m.execRecovery=null;if(p&&Number(p.expectedRevision||0)!==Number(r.revision||0)){p=await rebasePendingAgainstRemote(p,r)}let next=p?clone(p.payload||serverPayload):dirty.has(m.id)?merge3(meta.lastServerPayload||serverPayload,localPayload,serverPayload):serverPayload;next=preserveMedia(next,old);if(stable(sanitizeExec({exec:old}))!==stable(sanitizeExec({exec:next}))){m.exec=next;changed=true}m.execIntegrity=null;if(p)observed.set(m.id,stable(sanitizeExec(m)));else if(!dirty.has(m.id))observe(m);await restoreMediaForMove(m)}else{m.execSyncMeta=meta.revision!=null?meta:{revision:0,lastServerFingerprint:'',lastServerPayload:{}};m.execRecovery=null;if(allowed(m)){m.execIntegrity={code:'missing_execution_state',message:'La Move está activa en servidor pero no existe un estado de ejecución autoritativo.'};integrity++}observe(m)}}try{saveLocal()}catch(_){}if(renderNow&&(changed||integrity||recovery)&&!editorActive())render();if(pending.size&&!recovery)setTimeout(()=>flush().then(()=>hydrateExecution({renderNow:true})).catch(e=>console.warn('RigGO C4 pending reconcile',e)),0);setTimeout(()=>syncAllMedia().catch(()=>{}),0);return{ok:true,changed,pending:pending.size,integrity,recovery}}
+async function retryStatus(){
+  const status=W.RigGOSyncRetry1238.summary(await all());
+  if(W.RigGOV120)W.RigGOV120.syncState=status;
+  return status;
+}
+async function postponeExecutionRetry(item,error){
+  const current=await get(item.moveId);
+  if(current?.operationId===item.operationId){W.RigGOSyncRetry1238.postpone(current,error);await put(current);}
+}
+async function blockExecution(item,error,code='server_rejected'){
+  const current=await get(item.moveId);
+  if(current?.operationId===item.operationId){
+    delete current.retryApprovedAt;current.blockedCode=code;current.blockedAt=new Date().toISOString();
+    current.lastError=String(error?.message||error||code).slice(0,220);await put(current);
+  }
+}
+async function retryPending(moveId,{includeTransient=true}={}){
+  const current=await get(moveId);if(!current)return{ok:true,missing:true};
+  if(W.RigGOSyncRetry1238.blocked(current)||includeTransient){
+    if(W.RigGOSyncRetry1238.blocked(current))current.operationId=uuid();
+    W.RigGOSyncRetry1238.clear(current);await put(current);
+  }
+  return flush();
+}
+async function flushCore(){
+  if(!online()||!SB)return{ok:false,offline:true};
+  let sent=0,conflicts=0,blocked=0,noop=0,deferred=0,round=0,lastError=null;
+  while(round++<20){
+    const items=await all();if(!items.length)break;let progressed=false;
+    for(const original of items){
+      const item=clone(original),live=(state.moves||[]).find(x=>x.id===item.moveId);
+      if(live?._resetInProgress||live?.execRecovery?.required){blocked++;continue;}
+      if((Date.parse(item.nextRetryAt||'')||0)>Date.now()){deferred++;continue;}
+      // Preserve the 12.3.7 run guard before deciding whether an item is retryable.
+      try{if(await discardKnownStaleOutbox(item,live)){progressed=true;continue;}}
+      catch(error){if(transportError(error)){await postponeExecutionRetry(item,error);return{ok:false,transportFailure:true,error,sent,conflicts,blocked,noop,deferred};}await blockExecution(item,error,error?.code||'rpc_error');blocked++;lastError=error;continue;}
+      if(W.RigGOSyncRetry1238.blocked(item)){blocked++;lastError=lastError||new Error(item.lastError||item.blockedCode);continue;}
+      if(!W.RigGOSyncRetry1238.due(item)){deferred++;continue;}
+      let response;
+      try{response=await SB.rpc(item.payload?._riggoRunId?'riggo_execution_save_v3':'riggo_execution_save_v2',{p_move_id:item.moveId,p_payload:item.payload,p_expected_revision:item.expectedRevision,p_operation_id:item.operationId});}
+      catch(error){
+        if(transportError(error)){await postponeExecutionRetry(item,error);return{ok:false,transportFailure:true,error,sent,conflicts,blocked,noop,deferred};}
+        await blockExecution(item,error,error?.code||'rpc_error');blocked++;lastError=error;continue;
+      }
+      const data=response?.data;
+      if(response?.error){
+        const error=response.error;
+        if(staleRunError(error)){try{if(await reconcileStaleRun(item)){progressed=true;continue;}}catch(re){if(transportError(re)){await postponeExecutionRetry(item,re);return{ok:false,transportFailure:true,error:re,sent,conflicts,blocked,noop,deferred};}}}
+        if(transportError(error)){await postponeExecutionRetry(item,error);return{ok:false,transportFailure:true,error,sent,conflicts,blocked,noop,deferred};}
+        await blockExecution(item,error,error?.code||'rpc_error');blocked++;lastError=error;continue;
+      }
+      if(staleRunError(data)){
+        try{if(await reconcileStaleRun(item)){progressed=true;continue;}}catch(error){if(transportError(error)){await postponeExecutionRetry(item,error);return{ok:false,transportFailure:true,error,sent,conflicts,blocked,noop,deferred};}}
+        const error=new Error(data?.message||'La Move pertenece a otra corrida. Actualiza RigGO.');
+        await blockExecution(item,error,'stale_execution_run');blocked++;lastError=error;continue;
+      }
+      if(data?.ok){
+        if(data.no_change)noop++;else sent++;progressed=true;
+        const m=(state.moves||[]).find(x=>x.id===item.moveId),current=await get(item.moveId),same=current?.operationId===item.operationId,liveFp=m?fp(m):'',unchanged=!!m&&liveFp===(item.localFingerprint||item.fingerprint);
+        if(same&&unchanged&&m)m.exec=preserveMedia(clone(item.payload),m.exec||{});
+        applyServerMeta(m,item,data);
+        if(same){await del(item.moveId);if(m&&!unchanged){markDirty(m);await queue(m,{force:true});}else{dirty.delete(item.moveId);if(m)observe(m);}}
+        else if(current){current.expectedRevision=Number(data.revision)||current.expectedRevision;current.basePayload=clone(item.payload);current.rebasedAfterAckAt=new Date().toISOString();await put(current);dirty.add(item.moveId);}
+        continue;
+      }
+      if(data?.code==='revision_conflict'){
+        conflicts++;let rows;
+        try{rows=await readRows([item.moveId]);}catch(error){if(transportError(error)){await postponeExecutionRetry(item,error);return{ok:false,transportFailure:true,error,sent,conflicts,blocked,noop,deferred};}await blockExecution(item,error,error?.code||'rpc_error');blocked++;lastError=error;continue;}
+        const remote=rows[0];
+        if(!remote){const error=new Error('No se encontró la ejecución autoritativa.');await blockExecution(item,error,'missing_execution_state');blocked++;lastError=error;continue;}
+        await rebasePendingAgainstRemote(item,remote);progressed=true;continue;
+      }
+      const error=new Error(data?.message||data?.error||'Operación rechazada');
+      await blockExecution(item,error,data?.code||'server_rejected');blocked++;lastError=error;
+    }
+    if(!progressed||blocked||deferred)break;
+  }
+  // Bound pathological revision-conflict churn; continue later with the same queue.
+  if(round>20)for(const item of await all())if(W.RigGOSyncRetry1238.due(item))await postponeExecutionRetry(item,new Error('Conflictos repetidos; se reintentará más tarde.'));
+  return{ok:blocked===0,sent,conflicts,blocked,noop,deferred,pending:(await all()).length,...(lastError?{serverFailure:true,error:lastError}:{})};
+}
+function flush(){
+  if(flushP)return flushP;
+  flushP=(async()=>{let result,passes=0;do{flushAgain=false;result=await flushCore();}while(flushAgain&&online()&&!result?.blocked&&!result?.transportFailure&&++passes<3);return result;})()
+    .finally(async()=>{flushP=null;await retryStatus();try{await W.RigGOV112?.refreshPending?.();}catch(_){}});
+  return flushP;
+}
+async function hydrateCore({renderNow=false}={}){if(!SB||!online()||!state?.auth?.logged)return{ok:false,offline:!online()};if(!document.documentElement.classList.contains('riggo-booting')&&(editorActive()||window.__RIGGO_MEDIA_PICKER_ACTIVE__||window.__RIGGO_FIELD_COMMIT_PENDING__))return{ok:true,deferred:true,reason:window.__RIGGO_MEDIA_PICKER_ACTIVE__?'media-picker':'active-editor'};const moves=state.moves||[],ids=moves.map(m=>m.id),rows=await readRows(ids),by=new Map(rows.map(r=>[r.move_id,r])),pending=new Map((await all()).map(x=>[x.moveId,x]));let changed=false,integrity=0,recovery=0;for(const m of moves){const r=by.get(m.id),old=clone(m.exec||{});let p=pending.get(m.id);const localPayload=sanitizeExec(m),meta=m.execSyncMeta||{};if(r){const serverPayload=clone(r.payload||{});if(runChanged(localPayload,serverPayload)){await adoptRun(m,r);pending.delete(m.id);changed=true;continue}if(p&&runChanged(p.payload,serverPayload)){await adoptRun(m,r);pending.delete(m.id);changed=true;continue}m.execSyncMeta={revision:Number(r.revision)||1,lastServerFingerprint:stable(serverPayload),lastServerPayload:clone(serverPayload),updatedAt:r.updated_at||'',updatedBy:r.updated_by||'',c4Resolved:!!r.c4_resolved};const candidate=recoveryCandidate(m,serverPayload,p,!!r.c4_resolved);if(candidate){candidate.serverRevision=Number(r.revision)||1;m.execRecovery=candidate;recovery++;m.execIntegrity=null;observed.set(m.id,stable(localPayload));dirty.add(m.id);continue}else m.execRecovery=null;if(p&&Number(p.expectedRevision||0)!==Number(r.revision||0)){p=await rebasePendingAgainstRemote(p,r)}let next=p?clone(p.payload||serverPayload):dirty.has(m.id)?merge3(meta.lastServerPayload||serverPayload,localPayload,serverPayload):serverPayload;next=preserveMedia(next,old);if(stable(sanitizeExec({exec:old}))!==stable(sanitizeExec({exec:next}))){m.exec=next;changed=true}m.execIntegrity=null;if(p)observed.set(m.id,stable(sanitizeExec(m)));else if(!dirty.has(m.id))observe(m);await restoreMediaForMove(m)}else{m.execSyncMeta=meta.revision!=null?meta:{revision:0,lastServerFingerprint:'',lastServerPayload:{}};m.execRecovery=null;if(allowed(m)){m.execIntegrity={code:'missing_execution_state',message:'La Move está activa en servidor pero no existe un estado de ejecución autoritativo.'};integrity++}observe(m)}}try{saveLocal()}catch(_){}if(renderNow&&(changed||integrity||recovery)&&!editorActive())render();/* Reads never schedule recursive writes/reads. The due-write coordinator owns retries. */setTimeout(()=>syncAllMedia().catch(()=>{}),0);return{ok:true,changed,pending:pending.size,integrity,recovery}}
 function hydrateExecution(o){if(hydrateP)return hydrateP;hydrateP=hydrateCore(o).finally(()=>hydrateP=null);return hydrateP}
-async function persistNow(m){if(!markDirty(m)){const p=await get(m?.id);if(!p)return{ok:true,synced:true,noChange:true}}await queue(m);if(!online())return{ok:false,offline:true,pending:true};const r=await flush();const p=await get(m.id);return{ok:!!r.ok,synced:!!r.ok&&!p,pending:!!p,...r}}
+async function persistNow(m,{retryBlocked=true,retryNow=false}={}){
+  if(!markDirty(m)){const p=await get(m?.id);if(!p)return{ok:true,synced:true,noChange:true};}
+  await queue(m);if(!online())return{ok:false,offline:true,pending:true};
+  const queued=await get(m.id);
+  // An explicit save may retry one rejected operation; automatic flush never does.
+  const r=retryNow||(retryBlocked&&W.RigGOSyncRetry1238.blocked(queued))?await retryPending(m.id,{includeTransient:retryNow}):await flush();
+  const p=await get(m.id);return{...r,ok:!p,synced:!p,pending:!!p,...(!p?{blocked:0,transportFailure:false,serverFailure:false,error:null}:{})};
+}
 function setActivated(m,data,actualRelease){if(!m||!data?.ok)return;m.status='active';m.syncMeta=m.syncMeta||{};m.syncMeta.revision=Number(data.master_revision||data.revision||m.syncMeta.revision||1);m.syncMeta.serverStatus='active';m.exec=preserveMedia(clone(data.execution_payload||{}),m.exec||{});m.exec.actualRelease=m.exec.actualRelease||actualRelease;m.execSyncMeta={revision:Number(data.execution_revision)||1,lastServerFingerprint:stable(sanitizeExec(m)),lastServerPayload:clone(sanitizeExec(m)),updatedAt:data.updated_at||'',updatedBy:data.updated_by||''};m.execIntegrity=null;observe(m)}
 async function completeMove(m,actualAcceptance,lessons=''){
   if(!m?.id||!actualAcceptance)throw new Error('Actual Rig Acceptance requerido.');
@@ -3970,7 +4171,7 @@ const BASE_RENDER=typeof W.render==='function'?W.render:null;if(BASE_RENDER)W.re
 document.addEventListener('focusout',()=>{if(W.__RIGGO_RENDER_DEFERRED__){W.__RIGGO_RENDER_DEFERRED__=false;setTimeout(()=>{if(!editorActive())W.render?.()},0)}});
 patchLoader();neutralizeDestructive();new MutationObserver(neutralizeDestructive).observe(document.documentElement,{subtree:true,childList:true});
 const BASE_SAVE=W.save;if(typeof BASE_SAVE==='function')W.save=function(){const r=BASE_SAVE.apply(this,arguments);if(markCurrentDirty()){clearTimeout(timer);timer=setTimeout(()=>{queueAllChanged().then(()=>online()?flush():null).catch(e=>console.warn('RigGO 12.1 exec save',e))},260)}return r};
-W.RigGOV120={release:RELEASE,build:BUILD,acceptReset,queue,queueAllChanged,flush,hydrateExecution,persistNow,filterActivityRows,filterMoveCards,withoutLoader,neutralizeDestructive,sanitizeExec,markDirty,observe,observeAll,setActivated,completeMove,recoverFromLocal,evidence,syncClosureMedia,syncAllMedia,removeMediaPath,restoreMediaForMove,pendingCount:async()=>(await all()).length,listOutbox:all,selfCheck:()=>({ok:!!SB&&!!indexedDB,release:RELEASE,build:BUILD,readAuthority:'riggo_execution_read_c4',recoveryAuthority:'riggo_execution_recover_c4',conflictPolicy:'server-wins-overlap',runIdentityPolicy:'server-wins-no-merge'})};
+W.RigGOV120={release:RELEASE,build:BUILD,acceptReset,queue,queueAllChanged,flush,hydrateExecution,persistNow,filterActivityRows,filterMoveCards,withoutLoader,neutralizeDestructive,sanitizeExec,markDirty,observe,observeAll,setActivated,completeMove,recoverFromLocal,evidence,syncClosureMedia,syncAllMedia,removeMediaPath,restoreMediaForMove,retryStatus,retryPending,syncState:{total:0,due:0,blocked:0,deferred:0},pendingCount:async()=>(await retryStatus()).total,listOutbox:all,selfCheck:()=>({ok:!!SB&&!!indexedDB,release:RELEASE,build:BUILD,readAuthority:'riggo_execution_read_c4',recoveryAuthority:'riggo_execution_recover_c4',conflictPolicy:'server-wins-overlap',runIdentityPolicy:'server-wins-no-merge'})};
 })();
 
 /* ===== SOURCE riggo-v115.js (consolidated) ===== */
@@ -4252,13 +4453,18 @@ function selfCheck(){
     opsFlatTimeDetail:typeof W.RigGOV117?.opsFlatDetails==='function'&&typeof W.fFlatDetails==='function'&&typeof W.f0065Html==='function',
     supabase:!!W.RigGOSupabase
   };
-  return {ok:Object.values(checks).every(Boolean),checks,release:RELEASE,build:BUILD};
+  return {ok:Object.values(checks).every(Boolean),checks,release:W.RIGGO_RELEASE||RELEASE,build:W.RIGGO_BUILD||BUILD};
+}
+function bootFailureHelp(error,failed){
+  if(failed.includes('supabase'))return 'No se cargó la librería de acceso incluida en esta versión. Reintenta con conexión para recuperar los archivos.';
+  if(/SecurityError|InvalidStateError|QuotaExceededError|NotAllowedError/.test(error?.name||''))return 'El navegador no permite guardar datos locales. Habilita el almacenamiento para este sitio y vuelve a intentar. Tus datos no se han borrado.';
+  return 'No se pudo completar el inicio. Reintenta con conexión. Si continúa, informa la versión 12.4.2 y el detalle indicado abajo; no borres los datos del sitio.';
 }
 function showBootFailure(check,error){
   const gate=document.getElementById('riggoBootGate');if(!gate)return;
   gate.setAttribute('aria-hidden','false');
   const failed=check?.checks?Object.entries(check.checks).filter(([,v])=>!v).map(([k])=>k):[];
-  gate.innerHTML=`<div class="riggo-boot-inner"><img src="./assets/riggo-iso.png" alt="RigGO"><div class="riggo-boot-title">RigGO no pudo iniciar</div><div class="riggo-boot-sub" style="max-width:320px;text-align:center;line-height:1.45">Se bloqueó el inicio para evitar operar con módulos incompletos.${failed.length?`<br><span style="opacity:.7">${failed.join(' · ')}</span>`:''}</div><button id="riggoBootRetry" style="margin-top:4px;min-height:42px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:#122132;color:#fff;padding:0 16px;font-weight:800">Reintentar</button></div>`;
+  gate.innerHTML=`<div class="riggo-boot-inner"><img src="./assets/riggo-iso.png" alt="RigGO"><div class="riggo-boot-title">RigGO no pudo iniciar</div><div class="riggo-boot-sub" style="max-width:320px;text-align:center;line-height:1.45">${bootFailureHelp(error,failed)}${failed.length?`<br><span style="opacity:.7">${failed.join(' · ')}</span>`:''}</div><button id="riggoBootRetry" style="margin-top:4px;min-height:42px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:#122132;color:#fff;padding:0 16px;font-weight:800">Reintentar</button></div>`;
   document.getElementById('riggoBootRetry')?.addEventListener('click',()=>location.reload());
   recordRuntimeError('bootGuard',error||new Error('Runtime incompleto'),check||{});
 }
@@ -4293,9 +4499,9 @@ W.__RIGGO_V115_BOOT__=boot;
 /* RigGO 12.1 · Single Runtime/Version/Cache Authority */
 (()=>{
 'use strict';
-const W=window,RELEASE='12.3.7-stale-run-compat',BUILD='2026-09-26-1237-A1';
-function stamp(){W.RIGGO_RELEASE=RELEASE;W.RIGGO_BUILD=BUILD;document.documentElement.dataset.riggoRelease=RELEASE;document.documentElement.dataset.riggoBuild=BUILD;document.title='RigGO · 12.3.7';document.querySelector('meta[name="riggo-release"]')?.setAttribute('content',RELEASE);document.querySelector('meta[name="riggo-build"]')?.setAttribute('content',BUILD);try{localStorage.setItem('riggo_active_release',RELEASE)}catch(_){}const box=document.querySelector('.v5-admin-build');if(box){const b=box.querySelector('b');if(b)b.textContent='RigGO 12.3.7';const s=box.querySelectorAll('span');if(s.length)s[s.length-1].textContent=BUILD}}
-async function registerSW(){if(!('serviceWorker'in navigator))return;try{const regs=await navigator.serviceWorker.getRegistrations();for(const r of regs)if(!String(r.active?.scriptURL||r.installing?.scriptURL||r.waiting?.scriptURL||'').endsWith('/sw.js'))await r.unregister();const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'});await reg.update().catch(()=>{})}catch(e){console.warn('RigGO 12.1 SW',e)}}
+const W=window,RELEASE='12.4.2-accessible-registration-c1',BUILD='2026-10-09-1242-A1';
+function stamp(){W.RIGGO_RELEASE=RELEASE;W.RIGGO_BUILD=BUILD;document.documentElement.dataset.riggoRelease=RELEASE;document.documentElement.dataset.riggoBuild=BUILD;document.title='RigGO · 12.4.2';document.querySelector('meta[name="riggo-release"]')?.setAttribute('content',RELEASE);document.querySelector('meta[name="riggo-build"]')?.setAttribute('content',BUILD);try{localStorage.setItem('riggo_active_release',RELEASE)}catch(_){}const box=document.querySelector('.v5-admin-build');if(box){const b=box.querySelector('b');if(b)b.textContent='RigGO 12.4.2';const s=box.querySelectorAll('span');if(s.length)s[s.length-1].textContent=BUILD}}
+async function registerSW(){if(!('serviceWorker'in navigator)||navigator.onLine===false)return;try{const regs=await navigator.serviceWorker.getRegistrations();for(const r of regs)if(!String(r.active?.scriptURL||r.installing?.scriptURL||r.waiting?.scriptURL||'').endsWith('/sw.js'))await r.unregister();const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'});await reg.update().catch(()=>{})}catch(e){console.warn('RigGO 12.1 SW',e)}}
 async function coherence(){try{const r=await fetch('./version.json',{cache:'no-store'});if(!r.ok)return true;const v=await r.json();if(v.release!==RELEASE||v.build!==BUILD){document.documentElement.classList.add('riggo-version-mismatch');document.body?.insertAdjacentHTML('afterbegin','<div style="position:fixed;inset:0;z-index:999999;background:#07111d;color:#fff;display:grid;place-items:center;font:600 18px system-ui">Actualizando RigGO…</div>');const k='riggo_121_reload_'+v.build;if(!sessionStorage.getItem(k)){sessionStorage.setItem(k,'1');setTimeout(()=>location.reload(),450)}return false}return true}catch(_){return true}}
 function diagnostics(){const m=(W.state?.moves||[]).find(x=>x.id===W.state?.selectedMoveId);return{release:RELEASE,build:BUILD,moveId:m?.id||null,masterRevision:m?.syncMeta?.revision??null,serverStatus:m?.syncMeta?.serverStatus??m?.status??null,executionRevision:m?.execSyncMeta?.revision??null,lastExecutionWrite:m?.execSyncMeta?.updatedAt||null,integrity:m?.execIntegrity||null}}
 const oldRender=typeof W.render==='function'?W.render:null;if(oldRender)W.render=function(){const r=oldRender.apply(this,arguments);requestAnimationFrame(stamp);return r};
@@ -4312,7 +4518,7 @@ const W=window,E=id=>document.getElementById(id);
 function live(m,p,c){const lm=(state.moves||[]).find(x=>x.id===m?.id)||m,lc=lm?.exec?.closures?.[p?.id]||c;return{m:lm,c:lc}}
 function missing(step,c,p){try{return W.RigGOV61?.missing?.(step,c,p)||[]}catch(_){return[]}}
 function firstMissing(c,p,through){for(let s=0;s<=Math.min(4,through);s++){const x=missing(s,c,p);if(x.length)return{step:s,missing:x}}return null}
-function showMissingC3(items){document.querySelectorAll('.v61-required-error').forEach(x=>x.classList.remove('v61-required-error'));document.querySelector('.v61-validation-banner')?.remove();if(!items?.length)return false;const banner=document.createElement('div');banner.className='v61-validation-banner';banner.textContent='Completa antes de continuar: '+items.map(x=>x.label).join(', ')+'.';document.querySelector('.v3-report-head')?.insertAdjacentElement('afterend',banner);const ids=items.flatMap(x=>x.ids||[]);ids.forEach(id=>E(id)?.classList.add('v61-required-error'));ids.map(E).find(Boolean)?.scrollIntoView?.({behavior:'smooth',block:'center'});return true}
+function showMissingC3(items){document.querySelectorAll('.v61-required-error').forEach(x=>x.classList.remove('v61-required-error'));document.querySelector('.v61-validation-banner')?.remove();if(!items?.length)return false;const banner=document.createElement('div');banner.className='v61-validation-banner';banner.id='riggoValidationError';banner.setAttribute('role','alert');banner.setAttribute('aria-atomic','true');banner.textContent='Completa antes de continuar: '+items.map(x=>x.label).join(', ')+'.';document.querySelector('.v3-report-head')?.insertAdjacentElement('afterend',banner);const ids=items.flatMap(x=>x.ids||[]);ids.forEach(id=>E(id)?.classList.add('v61-required-error'));ids.map(E).find(Boolean)?.scrollIntoView?.({behavior:'smooth',block:'center'});return true}
 let reportNavPending1215=false;
 function settleReportEditor1215(){try{const a=document.activeElement;if(a&&a!==document.body&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)){try{a.dispatchEvent(new Event('change',{bubbles:true}))}catch(_){};try{a.blur()}catch(_){}}}catch(_){}}
 function renderReport1215(after){settleReportEditor1215();setTimeout(()=>{try{W.__RIGGO_RENDER_DEFERRED__=false}catch(_){};try{W.render?.()}finally{reportNavPending1215=false;requestAnimationFrame(()=>{try{scrollTopNow()}catch(_){}});if(after)setTimeout(after,0)}},0)}

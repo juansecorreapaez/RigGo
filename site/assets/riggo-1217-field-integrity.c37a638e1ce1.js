@@ -6,7 +6,7 @@ const n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 const clamp100=v=>Math.max(0,Math.min(100,n(v)));
 const lower=v=>String(v||'').trim().toLowerCase();
 const persistTimers=new Map();
-let networkCommits=0,lastSaveState='saved';
+let networkCommits=0,lastSaveState='ready',lastSaveMessage='Listo para registrar';
 
 function selectedMove(id=null){return (state?.moves||[]).find(m=>String(m?.id)===String(id||state?.selectedMoveId))||null}
 function periods(m){try{return typeof movePeriods==='function'?(movePeriods(m)||[]):(m?.exec?.periods||[])}catch(_){return m?.exec?.periods||[]}}
@@ -16,8 +16,8 @@ function inputIso(v){try{return typeof inputToIso==='function'?inputToIso(v):new
 function saveLocalNow(){try{typeof saveLocal==='function'&&saveLocal()}catch(_){} }
 function markDirty(m){try{W.RigGOV120?.markDirty?.(m)}catch(_){} saveLocalNow()}
 function setGlobalPending(){W.__RIGGO_FIELD_COMMIT_PENDING__=networkCommits>0||persistTimers.size>0}
-function ensureSaveBadge(){let el=E('riggo1217SaveState');if(el)return el;const host=document.querySelector('.v3-exec-title .row,.top-actions,.v3-report-head')||document.querySelector('.topbar');if(!host)return null;el=document.createElement('span');el.id='riggo1217SaveState';el.className='status gray riggo1217-save-state';el.textContent='Guardado ✓';host.appendChild(el);return el}
-function saveState(kind,msg){lastSaveState=kind;const el=ensureSaveBadge();if(!el)return;el.classList.remove('good','warn','bad','gray','info');el.classList.add(kind==='saved'?'good':kind==='error'?'bad':kind==='pending'?'warn':'info');el.textContent=msg||({saved:'Guardado ✓',saving:'Guardando…',pending:'Pendiente de sincronización',error:'Error al guardar'}[kind]||kind);}
+function ensureSaveBadge(){let el=E('riggo1217SaveState');if(el)return el;const host=document.querySelector('.v3-exec-title .row,.top-actions,.v3-report-head')||document.querySelector('.topbar');if(!host)return null;el=document.createElement('span');el.id='riggo1217SaveState';el.className='status gray riggo1217-save-state';el.textContent=lastSaveMessage;el.dataset.saveState=lastSaveState;el.classList.add(lastSaveState==='pending'?'warn':lastSaveState==='error'?'bad':lastSaveState==='saved'?'good':'gray');el.setAttribute('role','status');el.setAttribute('aria-live','polite');el.setAttribute('aria-atomic','true');host.appendChild(el);return el}
+function saveState(kind,msg){lastSaveState=kind;lastSaveMessage=msg||({saved:'Guardado en este dispositivo',saving:'Guardando…',pending:'Guardado en este dispositivo · Por sincronizar',error:'No se pudo confirmar el guardado'}[kind]||kind);const el=ensureSaveBadge();if(!el)return;el.dataset.saveState=kind;el.classList.remove('good','warn','bad','gray','info');el.classList.add(kind==='saved'?'good':kind==='error'?'bad':kind==='pending'?'warn':'info');el.textContent=lastSaveMessage;}
 
 async function persistImmediate(m,{renderAfter=false,label='Guardando…'}={}){
   if(!m)return{ok:false,missing:true};
@@ -27,8 +27,8 @@ async function persistImmediate(m,{renderAfter=false,label='Guardando…'}={}){
     try{typeof save==='function'&&save()}catch(_){}
     const r=await W.RigGOV120?.persistNow?.(m);
     if(r?.serverFailure||r?.blocked){saveState('error',String(r?.error?.message||'Error al guardar'));return{ok:false,...r}}
-    if(r?.offline||r?.pending){saveState('pending','Pendiente de sincronización');return{ok:false,pending:true,...r}}
-    saveState('saved','Guardado ✓');
+    if(navigator.onLine===false||r?.offline||r?.pending){saveState('pending','Guardado en este dispositivo · Por sincronizar');return{...r,ok:false,pending:true}}
+    saveState('saved',r?.ok&&!r?.noChange?'Guardado y sincronizado ✓':'Guardado en este dispositivo');
     if(renderAfter){try{render()}catch(_){} }
     return{ok:true,...(r||{})};
   }catch(e){saveState('error','Error al guardar');console.error('RigGO 12.1.7 persist',e);return{ok:false,error:e}}
@@ -131,7 +131,7 @@ function installReportRenderers(){if(typeof W.f0065Html==='function'&&!W.f0065Ht
 function postRender(){decorateFields();if(state?.screen==='review')bindEarlyClose();if(state?.screen==='execute'&&state?.execMode==='day')recalcAccumulators(selectedMove());}
 function installRender(){const base=typeof W.render==='function'?W.render:(typeof render==='function'?render:null);if(!base||base.__riggo1217)return;const fn=function(){const r=base.apply(this,arguments);requestAnimationFrame(postRender);return r};fn.__riggo1217=true;try{W.render=fn;render=fn}catch(_){W.render=fn}}
 
-function styles(){if(E('riggo1217Style'))return;const st=document.createElement('style');st.id='riggo1217Style';st.textContent=`.riggo1217-save-state{font-size:9px!important;min-height:24px;display:inline-flex;align-items:center}.riggo1217-auto-acc{background:rgba(90,115,140,.10)!important;color:#aab9c6!important;cursor:not-allowed}.riggo1217-load-choice{display:flex;gap:8px}`;document.head.appendChild(st)}
+function styles(){if(E('riggo1217Style'))return;const st=document.createElement('style');st.id='riggo1217Style';st.textContent=`.riggo1217-save-state{font-size:12px!important;min-height:24px;display:inline-flex;align-items:center}.riggo1217-auto-acc{background:rgba(90,115,140,.10)!important;color:#aab9c6!important;cursor:not-allowed}.riggo1217-load-choice{display:flex;gap:8px}`;document.head.appendChild(st)}
 
 function selfCheck(){return{ok:typeof W.RigGOV120?.persistNow==='function'&&typeof W.validateClosure==='function'&&typeof W.advanceLoad==='function',release:RELEASE,build:BUILD,features:{liveFieldAuthority:true,immediatePersist:true,hydrateCommitGuard:true,automaticAccumulators:true,noActivityDay:true,earlyClose:true,loadChoices:['Cargada','Posicionada'],opsDate:'period.start',roleParitySql:true}}}
 function install(){if(W.__RIGGO_1217_INSTALLED__)return;W.__RIGGO_1217_INSTALLED__=true;styles();captureInputs();installProgressAuthority();installParticipantAdd();installNoActivityNavigation();installReportRenderers();installRender();postRender();W.RigGO1217={release:RELEASE,build:BUILD,liveCtx,recalcAccumulators,applyField,persistImmediate,closeDay:closeDay1217,selfCheck,hasPendingCommit:()=>!!W.__RIGGO_FIELD_COMMIT_PENDING__};try{render()}catch(_){} }

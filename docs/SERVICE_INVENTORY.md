@@ -1,6 +1,6 @@
 # Service inventory
 
-RigGO release 12.3.7 uses a browser client and managed services. This table distinguishes code present in the repository from configuration that must be inspected in the running environment.
+RigGO release 12.4.1 uses a browser client and managed services. This table distinguishes code present in the repository from configuration that must be inspected in the running environment.
 
 | Component | Role | Evidence in this repository | Configuration outside the repository |
 | --- | --- | --- | --- |
