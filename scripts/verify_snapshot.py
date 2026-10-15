@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the deployed-asset snapshot against the original 12.3.7 ZIP."""
+"""Verify the deployed-asset snapshot against the release manifest."""
 import hashlib
 from pathlib import Path
 import sys

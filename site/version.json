@@ -1,12 +1,40 @@
 {
-  "release": "12.3.7-stale-run-compat",
-  "build": "2026-09-26-1237-A1",
-  "bundle": "riggo-app.8fd9790e3793.js",
-  "css": "riggo-app.1f369e790616.css",
+  "release": "12.4.3-complete-english-sanad-c1",
+  "build": "2026-10-14-1243-A1",
+  "bundle": "riggo-app.e1796d71fb18.js",
+  "css": "riggo-app.85bcb7b21566.css",
   "schema": "12.3.7-stale-run-compat+atomic-reset-run-token+c4-no-cross-run-merge",
-  "stabilization": "Preserves all 12.3.6 UX fixes; same-run v2/v3 compatibility; missing/different run blocked; stale outbox discarded with server-wins adoption and no cross-run merge.",
-  "operational_bundle": "riggo-1236-operational.ecf58ba518af.js",
-  "field_integrity_bundle": "riggo-1217-field-integrity.ea49ec55f6bc.js",
-  "move_intelligence_bundle": "riggo-123-move-intelligence.79811e859444.js",
-  "field_ux_bundle": "riggo-1237-field-ux.1b6be3b11202.js"
+  "stabilization": "Complete English presentation for authored static and dynamic copy, generated report defaults, mobile CSS labels and dialogs; user data and canonical values preserved. Corporate login, user administration and distribution groups accept nabors.com and sanad.com with existing approval and permissions. Server Edge Function source was not available in this delivery.",
+  "operational_bundle": "riggo-1236-operational.442039d2033a.js",
+  "field_integrity_bundle": "riggo-1217-field-integrity.d63194bc3a20.js",
+  "move_intelligence_bundle": "riggo-123-move-intelligence.cf6e0947a562.js",
+  "field_ux_bundle": "riggo-1237-field-ux.4d1cbcddbfe0.js",
+  "baseline_release": "12.4.0-operational-design-c1",
+  "sync_policy": {
+    "retry_seconds": [
+      15,
+      30,
+      60,
+      120,
+      240,
+      300
+    ],
+    "background_read_min_seconds": 30,
+    "permanent_rejection": "pause-and-retain-local-work"
+  },
+  "evidence_bundle": "riggo-124.375ad70fae02.js",
+  "readability_css": "riggo-124.c9fb3b86ea11.css",
+  "local_evidence_db": "riggo-media-v124",
+  "operational_end_policy": "exact-physical-completion-or-confirmed-end; exact-reported-100-pauses-pending-review; audited-reopening",
+  "field_corrections_bundle": "riggo-1241.612858e7db30.js",
+  "field_corrections_css": "riggo-1241.6814b1a55019.css",
+  "language_preference": "Supabase Auth user_metadata.riggo_language; account-scoped local fallback",
+  "languages": [
+    "es",
+    "en"
+  ],
+  "allowed_corporate_domains": [
+    "nabors.com",
+    "sanad.com"
+  ]
 }

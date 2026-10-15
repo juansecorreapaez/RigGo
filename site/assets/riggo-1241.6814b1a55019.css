@@ -1,0 +1,22 @@
+/* Natural document scrolling on touch, desktop and short viewports. */
+html { height:auto!important;max-height:none!important;overflow-y:auto!important;overscroll-behavior-y:auto!important; }
+body[data-riggo-route] { height:auto!important;max-height:none!important;min-height:100vh!important;min-height:100dvh!important;overflow-x:clip!important;overflow-y:visible!important;overscroll-behavior-y:auto!important; }
+body[data-riggo-route] .app-shell { height:auto!important;max-height:none!important;min-height:100vh!important;min-height:100dvh!important;overflow:visible!important; }
+body[data-riggo-route] .main { height:auto!important;max-height:none!important;min-height:0!important;overflow:visible!important; }
+body[data-riggo-route] #app { max-height:none!important;overflow:visible!important; }
+body[data-riggo-route] .v3-login.v4-login.v43-login.v5-login.v51-login.v52-login,
+body[data-riggo-route] .v5-home.v52-home { height:auto!important;max-height:none!important;min-height:calc(100dvh - 72px)!important;overflow:visible!important; }
+body[data-riggo-route] .v52-home-content { height:auto!important;min-height:calc(100dvh - 72px)!important; }
+.riggo1241-plan-note { margin:0 0 20px;color:var(--r124-muted);font-size:.875rem;line-height:1.5; }
+.riggo1241-load-detail { margin-top:10px;padding-top:10px;border-top:1px solid var(--r124-line);font-size:.875rem;color:#c4d2dc;line-height:1.5; }
+.riggo1241-transport-summary b { margin-bottom:4px; }
+/* Drawing alone owns its touch gestures. The rest of the document pans normally. */
+body[data-riggo-route] .main { touch-action:auto; }
+.signature canvas { touch-action:none; }
+@media(max-width:760px) {
+  body[data-riggo-route] .main { padding-bottom:calc(100px + env(safe-area-inset-bottom))!important; }
+  body[data-riggo-route="login"] .main,body[data-riggo-route="home"] .main { padding:0!important; }
+  .riggo1241-plan-note { font-size:.875rem; }
+}
+
+.v3-exec-footer { position:static!important;margin-block:20px 0!important; }

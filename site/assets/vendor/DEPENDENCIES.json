@@ -1,0 +1,46 @@
+[
+  {
+    "package": "@supabase/supabase-js",
+    "version": "2.117.3",
+    "file": "supabase-js-2.117.3.min.js",
+    "sha256": "d6a5c4414a5d4ce646d9c1de223aa7067d3ff664c15394ffeb7fcffc763354a3",
+    "sri": "sha512-6m3RpkhE77lyYH3ZOab3pFVoIpXrtVYmLuYQHOgLaYQIBRq/n6qJb1lHeZQlrRdBNQJfvj93mSTo7Zh723jRIw==",
+    "licenses": [
+      "supabase-js-2.117.3-LICENSE"
+    ],
+    "tarball_integrity": "sha512-K+f8PimXDunPWQ63CKRXaF5pbVPJxmfw5ryAnh0s9S9PkwcuqBjiSpIaqpF7KLDljeYwXIL85ST8QxaO0+XuvA=="
+  },
+  {
+    "package": "html2pdf.js",
+    "version": "0.10.1",
+    "file": "html2pdf.js-0.10.1.min.js",
+    "sha256": "85e6ee9ce246e3ae4424313f7e46a5ed860a28d757811de8dc9c43f306049d65",
+    "sri": "sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==",
+    "licenses": [
+      "html2pdf.js-0.10.1-LICENSE"
+    ],
+    "tarball_integrity": "sha512-3onwwhOWsZfNjIZwV6YIJ6FVhXk+X9YxHSqzeS6hup+1dGi2DHI+zZYUJ+iFnvtaYcjlhyrILL1fvRCUOa8Fcg=="
+  },
+  {
+    "package": "html2canvas",
+    "version": "1.4.1",
+    "file": "html2canvas-1.4.1.min.js",
+    "sha256": "e87e550794322e574a1fda0c1549a3c70dae5a93d9113417a429016838eab8cb",
+    "sri": "sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==",
+    "licenses": [
+      "html2canvas-1.4.1-LICENSE"
+    ],
+    "tarball_integrity": "sha512-fPU6BHNpsyIhr8yyMpTLLxAbkaK8ArIBcmZIRiBLiDhjeqvXolaEmDGmELFuX9I4xDcaKKcJl+TKZLqruBbmWA=="
+  },
+  {
+    "package": "jspdf",
+    "version": "2.5.1",
+    "file": "jspdf-2.5.1.min.js",
+    "sha256": "98ccf17aa10c20bb1301762618fcc9b6ab3a4e7f26b6071d64d0b41154df3875",
+    "sri": "sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==",
+    "licenses": [
+      "jspdf-2.5.1-LICENSE"
+    ],
+    "tarball_integrity": "sha512-hXObxz7ZqoyhxET78+XR34Xu2qFGrJJ2I2bE5w4SM8eFaFEkW2xcGRVUss360fYelwRSid/jT078kbNvmoW0QA=="
+  }
+]

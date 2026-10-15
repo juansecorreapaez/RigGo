@@ -1,21 +1,52 @@
+/
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 /index.html
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 /sw.js
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 /version.json
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
-/assets/riggo-app.8fd9790e3793.js
+/assets/riggo-app.e1796d71fb18.js
   Cache-Control: public, max-age=31536000, immutable
-/assets/riggo-app.1f369e790616.css
+/assets/riggo-app.85bcb7b21566.css
   Cache-Control: public, max-age=31536000, immutable
-/assets/riggo-1236-operational.ecf58ba518af.js
-  Cache-Control: public, max-age=31536000, immutable
-
-/assets/riggo-1217-field-integrity.ea49ec55f6bc.js
+/assets/riggo-1236-operational.442039d2033a.js
   Cache-Control: public, max-age=31536000, immutable
 
-/assets/riggo-123-move-intelligence.79811e859444.js
+/assets/riggo-1217-field-integrity.d63194bc3a20.js
   Cache-Control: public, max-age=31536000, immutable
 
-/assets/riggo-1237-field-ux.1b6be3b11202.js
+/assets/riggo-123-move-intelligence.cf6e0947a562.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-1237-field-ux.4d1cbcddbfe0.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-124.375ad70fae02.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-124.c9fb3b86ea11.css
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-1241.6814b1a55019.css
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-1241.612858e7db30.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-storage.4deae6090fd6.js
+  Cache-Control: public, max-age=31536000, immutable
+/assets/riggo-i18n-catalog.3f534f793264.js
+  Cache-Control: public, max-age=31536000, immutable
+/assets/riggo-i18n.7938403ebd6f.js
+  Cache-Control: public, max-age=31536000, immutable
+/assets/riggo-language.dbd7ced8a5cb.js
+  Cache-Control: public, max-age=31536000, immutable
+/assets/riggo-language.2d02cfb3b11b.css
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-identity.3a87ba8373e8.js
   Cache-Control: public, max-age=31536000, immutable

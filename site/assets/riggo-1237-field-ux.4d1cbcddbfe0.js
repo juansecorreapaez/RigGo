@@ -22,31 +22,33 @@ async function directAdvanceLoad(m0,p0,id,button=null){
   const before=clone(x), st=loadStatus(x,p), at=typeof actionTimestamp==='function'?actionTimestamp(p):new Date().toISOString();
   let next='';
   if(st==='Pendiente')next='Cargada';
-  else if(st==='Cargada'||st==='En tránsito')next='Posicionada';
+  else if(st==='Cargada')next='En tránsito';
+  else if(st==='En tránsito')next='Posicionada';
   else {
-    if(!confirm(`¿Reiniciar esta carga a Pendiente?\n\n${x.description||'Carga'}`))return;
+    if(!confirm(RigGOI18n.msg`¿Reiniciar esta carga a Pendiente?\n\n${x.description||'Carga'}`))return;
     next='Pendiente';
   }
   loadBusy.add(lock);if(button){button.dataset.riggo1235Busy='1';button.disabled=true}
   try{
     x.history=Array.isArray(x.history)?x.history:[];
     if(next==='Pendiente'){
-      x.loadedAt=null;x.transitAt=null;x.positionedAt=null;x.history=[];
+      x.loadedAt=null;x.transitAt=null;x.positionedAt=null;
+      x.history.push({id:uid(),status:'Pendiente',at,user:state.auth.email});
       m.audit=m.audit||[];m.audit.push({at:new Date().toISOString(),user:state.auth.email,action:'load_status_reset',loadId:x.id,period:p.id,from:st,to:'Pendiente'});
     }else{
       x.history.push({id:uid(),status:next,at,user:state.auth.email});
       if(next==='Cargada'){x.loadedAt=at;x.transitAt=null;x.positionedAt=null}
       else if(next==='En tránsito'){x.loadedAt=x.loadedAt||at;x.transitAt=at;x.positionedAt=null}
-      else {x.loadedAt=x.loadedAt||at;x.transitAt=null;x.positionedAt=at}
+      else {x.loadedAt=x.loadedAt||at;x.transitAt=x.transitAt||at;x.positionedAt=at}
       m.audit=m.audit||[];m.audit.push({at:new Date().toISOString(),user:state.auth.email,action:'load_status',loadId:x.id,period:p.id,status:next,mode:'direct_cycle_1235'});
     }
     mark(m);
     const r=await W.RigGO1217?.persistImmediate?.(m,{label:`Guardando ${next}…`});
-    if(r&&!r.ok&&!r.pending)throw (r.error||new Error('No fue posible guardar el estado de la carga.'));
+    if(r&&!r.ok&&!r.pending)throw (r.error||new Error(RigGOI18n.t('No fue posible guardar el estado de la carga.')));
     const y=window.scrollY;renderAt(y);
   }catch(e){
     renderAt(window.scrollY);
-    alert('El estado está local, sin confirmar en servidor. Revisa la sincronización: '+String(e?.message||e));
+    alert(RigGOI18n.t('El estado está local, sin confirmar en servidor. Revisa la sincronización: ')+String(e?.message||e));
   }finally{loadBusy.delete(lock);if(button&&document.body.contains(button)){button.disabled=false;delete button.dataset.riggo1235Busy}}
 }
 function installLoadAuthority(){try{W.advanceLoad=directAdvanceLoad;advanceLoad=directAdvanceLoad}catch(_){W.advanceLoad=directAdvanceLoad}}
@@ -64,7 +66,7 @@ function reportMissing(step,c,p){
 function showMissing(items){
   document.querySelectorAll('.v61-required-error').forEach(x=>x.classList.remove('v61-required-error'));
   document.querySelector('.v61-validation-banner')?.remove();if(!items?.length)return;
-  const b=document.createElement('div');b.className='v61-validation-banner';b.textContent='Completa antes de continuar: '+items.map(x=>x.label).join(', ')+'.';
+  const b=document.createElement('div');b.className='v61-validation-banner';b.textContent=RigGOI18n.t('Completa antes de continuar: ')+items.map(x=>x.label).join(', ')+'.';
   document.querySelector('.v3-report-head')?.insertAdjacentElement('afterend',b);
   const ids=items.flatMap(x=>x.ids||[]);ids.forEach(id=>E(id)?.classList.add('v61-required-error'));
   const first=ids.map(E).find(Boolean);if(first){first.scrollIntoView?.({behavior:'smooth',block:'center'});setTimeout(()=>{try{first.focus({preventScroll:true})}catch(_){}},80)}
@@ -100,7 +102,7 @@ function installReportAuthority(){
     const target=Number(b.dataset.v3Reportstep);if(target===step)return;
     if(target<step||z.c.reportVisited?.[target])return goReport(z.m,z.p,z.c,target,{validate:false});
     if(target===step+1)return goReport(z.m,z.p,z.c,target);
-    try{toast('Completa los pasos en secuencia')}catch(_){}
+    try{toast(RigGOI18n.t('Completa los pasos en secuencia'))}catch(_){}
   },true);
   W.addEventListener('change',e=>{
     const b=e.target;if(!b?.matches?.('[data-v3-carry],[data-carry]'))return;
@@ -128,31 +130,31 @@ function bindCarryNoJump(){} // Kept for post-render compatibility; authority is
 function canReset(m){if(!m)return false;const s=String(m.syncMeta?.serverStatus||m.status||'').toLowerCase();if(s!=='active')return false;try{return hasPerm('execute')||hasPerm('admin')||hasPerm('plan')}catch(_){return false}}
 async function idbDelete(dbName,store,key){return new Promise(resolve=>{try{const r=indexedDB.open(dbName,1);r.onerror=()=>resolve(false);r.onsuccess=()=>{try{const db=r.result;if(!db.objectStoreNames.contains(store)){db.close();resolve(true);return}const tx=db.transaction(store,'readwrite');tx.objectStore(store).delete(key);tx.oncomplete=()=>{db.close();resolve(true)};tx.onerror=()=>{db.close();resolve(false)}}catch(_){resolve(false)}}}catch(_){resolve(false)}})}
 async function clearResetOutboxes(moveId){await Promise.all([idbDelete('riggo-execution-v120','outbox',moveId),idbDelete('riggo-field-v112','outbox',`save:${moveId}`)]);try{await W.RigGOV112?.refreshPending?.()}catch(_){} }
-async function serverRevisions(moveId){const SB=W.RigGOSupabase;if(!SB)throw new Error('Supabase no disponible.');const mr=await SB.from('moves').select('revision,status').eq('id',moveId).single();if(mr.error)throw mr.error;const er=await SB.rpc('riggo_execution_read_c4',{p_move_ids:[moveId]});if(er.error)throw er.error;const row=(er.data||[]).find(x=>String(x.move_id)===String(moveId));if(!row)throw new Error('Execution state no encontrado.');return{master:Number(mr.data?.revision)||0,status:mr.data?.status,execution:Number(row.revision)||0}}
+async function serverRevisions(moveId){const SB=W.RigGOSupabase;if(!SB)throw new Error(RigGOI18n.t('Supabase no disponible.'));const mr=await SB.from('moves').select('revision,status').eq('id',moveId).single();if(mr.error)throw mr.error;const er=await SB.rpc('riggo_execution_read_c4',{p_move_ids:[moveId]});if(er.error)throw er.error;const row=(er.data||[]).find(x=>String(x.move_id)===String(moveId));if(!row)throw new Error(RigGOI18n.t('Execution state no encontrado.'));return{master:Number(mr.data?.revision)||0,status:mr.data?.status,execution:Number(row.revision)||0}}
 const resetRequests=new Map(),resetBusy=new Set();
 async function resetMoveToReady(moveId,btn=null){
   let m=(state.moves||[]).find(x=>String(x.id)===String(moveId));
-  if(!m||(!resetRequests.has(moveId)&&!canReset(m)))throw new Error('Esta Move no está disponible para reinicio.');
-  if(navigator.onLine===false)throw new Error('Se requiere conexión para reiniciar una Move.');
-  if(resetBusy.has(moveId))throw new Error('El reinicio ya está en curso.');
-  resetBusy.add(moveId);if(btn){btn.disabled=true;btn.textContent='Reiniciando…'}if(E('riggo1235ResetCancel'))E('riggo1235ResetCancel').disabled=true;
+  if(!m||(!resetRequests.has(moveId)&&!canReset(m)))throw new Error(RigGOI18n.t('Esta Move no está disponible para reinicio.'));
+  if(navigator.onLine===false)throw new Error(RigGOI18n.t('Se requiere conexión para reiniciar una Move.'));
+  if(resetBusy.has(moveId))throw new Error(RigGOI18n.t('El reinicio ya está en curso.'));
+  resetBusy.add(moveId);if(btn){btn.disabled=true;btn.textContent=RigGOI18n.t('Reiniciando…')}if(E('riggo1235ResetCancel'))E('riggo1235ResetCancel').disabled=true;
   try{
     if(!resetRequests.has(moveId)){
       const pre=await W.RigGO1217.persistImmediate(m,{label:'Sincronizando ejecución…'});
-      if(!pre?.ok||pre.pending||pre.blocked||pre.transportFailure)throw new Error('Hay cambios pendientes. Sincroniza antes de reiniciar.');
+      if(!pre?.ok||pre.pending||pre.blocked||pre.transportFailure)throw new Error(RigGOI18n.t('Hay cambios pendientes. Sincroniza antes de reiniciar.'));
       const master=await W.RigGOV112.flush();
-      if(master?.ok===false||master?.blocked||master?.transportFailure||master?.serverFailure||master?.conflicts)throw new Error('No se pudo sincronizar la Move antes del reinicio.');
+      if(master?.ok===false||master?.blocked||master?.transportFailure||master?.serverFailure||master?.conflicts)throw new Error(RigGOI18n.t('No se pudo sincronizar la Move antes del reinicio.'));
       // Prevent new local snapshots while the atomic operation is in flight.
       m._resetInProgress=true;
       await W.RigGOV120.flush();
       const rev=await serverRevisions(moveId);
-      if(String(rev.status)!=='active')throw new Error('La Move ya no está activa. Actualiza RigGO.');
+      if(String(rev.status)!=='active')throw new Error(RigGOI18n.t('La Move ya no está activa. Actualiza RigGO.'));
       resetRequests.set(moveId,{p_move_id:moveId,p_expected_master_revision:rev.master,p_expected_execution_revision:rev.execution,p_operation_id:uid()});
     }
     m._resetInProgress=true;
     const {data,error}=await W.RigGOSupabase.rpc('riggo_reset_move_to_ready_v1',resetRequests.get(moveId));
-    if(error){if(/function.*does not exist|schema cache/i.test(String(error.message||error)))throw new Error('Falta instalar el SQL de reinicio 12.3.6/12.3.7 en Supabase.');throw error}
-    if(!data?.ok){resetRequests.delete(moveId);throw new Error(data?.message||data?.code||'El servidor no confirmó el reinicio.')}
+    if(error){if(/function.*does not exist|schema cache/i.test(String(error.message||error)))throw new Error(RigGOI18n.t('Falta instalar el SQL de reinicio 12.3.6/12.3.7 en Supabase.'));throw error}
+    if(!data?.ok){resetRequests.delete(moveId);throw new Error(data?.message||data?.code||RigGOI18n.t('El servidor no confirmó el reinicio.'))}
     await clearResetOutboxes(moveId);
     m=(state.moves||[]).find(x=>String(x.id)===String(moveId))||m;
     m.status='ready';m.syncMeta=m.syncMeta||{};m.syncMeta.serverStatus='ready';m.syncMeta.revision=Number(data.master_revision);
@@ -161,32 +163,33 @@ async function resetMoveToReady(moveId,btn=null){
     m.syncMeta.lastServerFingerprint=W.RigGOV112.fingerprint(m);
     delete m._resetInProgress;resetRequests.delete(moveId);
     state.screen='moveSelect';state.execMode='days';state.execTab='rd';state.selectedMoveId=m.id;
-    try{saveLocal()}catch(_){}renderAt(0);try{toast('Move reiniciada · lista para iniciar ✓')}catch(_){}
+    try{saveLocal()}catch(_){}renderAt(0);try{toast(RigGOI18n.t('Move reiniciada · lista para iniciar ✓'))}catch(_){}
     return data;
   }finally{
     delete m._resetInProgress;resetBusy.delete(moveId);if(E('riggo1235ResetCancel'))E('riggo1235ResetCancel').disabled=false;
-    if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent='Confirmar reinicio'}
+    if(btn&&document.body.contains(btn)){btn.disabled=false;btn.textContent=RigGOI18n.t('Confirmar reinicio')}
   }
 }
 function openResetSheet(m){
-  sheetRoot.innerHTML=`<div class="sheet-backdrop"><div class="sheet"><div class="sheet-handle"></div><h2>Reiniciar Move · ${esc(m.meta?.rig||'')}</h2><div class="sheet-sub">La Move volverá a <b>No iniciada / Lista para iniciar</b>. Se conserva el Plan, pero se elimina la ejecución de esta corrida: Release real, días, Flat Time, avance, estados de cargas, cierres y reportes operacionales.</div><div class="panel" style="margin-top:12px;border-color:rgba(239,68,68,.45)"><b>Esta acción es intencional y auditada.</b><div class="small muted" style="margin-top:5px">Escribe <b>REINICIAR</b> para confirmar.</div></div><label style="margin-top:12px">Confirmación<input id="riggo1235ResetConfirm" class="field" autocomplete="off" placeholder="REINICIAR"></label><div id="riggo1235ResetStatus" class="small" style="margin-top:8px"></div><div class="sheet-footer"><button id="riggo1235ResetCancel" class="btn">Cancelar</button><button id="riggo1235ResetDo" class="btn danger" disabled>Confirmar reinicio</button></div></div></div>`;
-  E('riggo1235ResetCancel').onclick=closeSheet;const inp=E('riggo1235ResetConfirm'),btn=E('riggo1235ResetDo');inp.oninput=()=>{btn.disabled=inp.value.trim().toUpperCase()!=='REINICIAR'};btn.onclick=async()=>{if(inp.value.trim().toUpperCase()!=='REINICIAR')return;const s=E('riggo1235ResetStatus');if(s)s.textContent='Validando y reiniciando en servidor…';try{await resetMoveToReady(m.id,btn);closeSheet()}catch(e){if(s){s.style.color='#ffafb8';s.textContent=String(e?.message||e)}alert('No fue posible reiniciar la Move: '+String(e?.message||e))}};setTimeout(()=>inp.focus(),40)
+  const token=RigGOI18n.language==='en'?'RESET':'REINICIAR';
+  sheetRoot.innerHTML=RigGOI18n.h`<div class="sheet-backdrop"><div class="sheet"><div class="sheet-handle"></div><h2>Reiniciar Move · ${RigGOI18n.data(esc(m.meta?.rig||''))}</h2><div class="sheet-sub">La Move volverá a <b>No iniciada / Lista para iniciar</b>. Se conserva el Plan, pero se elimina la ejecución de esta corrida: Release real, días, Flat Time, avance, estados de cargas, cierres y reportes operacionales.</div><div class="panel" style="margin-top:12px;border-color:rgba(239,68,68,.45)"><b>Esta acción es intencional y auditada.</b><div class="small muted" style="margin-top:5px">Escribe <b>${token}</b> para confirmar.</div></div><label style="margin-top:12px">Confirmación<input id="riggo1235ResetConfirm" class="field" autocomplete="off" placeholder="${token}"></label><div id="riggo1235ResetStatus" class="small" style="margin-top:8px"></div><div class="sheet-footer"><button id="riggo1235ResetCancel" class="btn">Cancelar</button><button id="riggo1235ResetDo" class="btn danger" disabled>Confirmar reinicio</button></div></div></div>`;
+  E('riggo1235ResetCancel').onclick=closeSheet;const inp=E('riggo1235ResetConfirm'),btn=E('riggo1235ResetDo');inp.oninput=()=>{btn.disabled=inp.value.trim().toUpperCase()!==token};btn.onclick=async()=>{if(inp.value.trim().toUpperCase()!==token)return;const s=E('riggo1235ResetStatus');if(s)s.textContent=RigGOI18n.t('Validando y reiniciando en servidor…');try{await resetMoveToReady(m.id,btn);closeSheet()}catch(e){if(s){s.style.color='#ffafb8';s.textContent=RigGOI18n.t(String(e?.message||e))}alert(RigGOI18n.t('No fue posible reiniciar la Move: ')+String(e?.message||e))}};setTimeout(()=>inp.focus(),40)
 }
 function injectResetButton(){
   document.querySelectorAll('[data-v4-editmove],[data-editmove]').forEach(anchor=>{
     const id=anchor.dataset.v4Editmove||anchor.dataset.editmove,m=(state.moves||[]).find(x=>String(x.id)===String(id));
     if(!canReset(m)||anchor.parentElement.querySelector('[data-riggo-reset]'))return;
-    const b=document.createElement('button');b.type='button';b.dataset.riggoReset=id;b.className='btn small danger riggo1235-reset';b.textContent='Reiniciar';
+    const b=document.createElement('button');b.type='button';b.dataset.riggoReset=id;b.className='btn small danger riggo1235-reset';b.textContent=RigGOI18n.t('Reiniciar');
     b.onclick=e=>{e.preventDefault();e.stopImmediatePropagation();openResetSheet(m)};anchor.insertAdjacentElement('afterend',b);
   });
   if(state?.screen!=='execute')return;
   const m=(state.moves||[]).find(x=>String(x.id)===String(state.selectedMoveId));if(!canReset(m)||E('riggo1235ResetMove'))return;
   const anchor=E('v3ChangeMove');if(!anchor)return;
-  const b=document.createElement('button');b.type='button';b.id='riggo1235ResetMove';b.dataset.v43Short='Reiniciar';b.className='btn small danger riggo1235-reset';b.textContent='Reiniciar Move';
+  const b=document.createElement('button');b.type='button';b.id='riggo1235ResetMove';b.dataset.v43Short='Reiniciar';b.className='btn small danger riggo1235-reset';b.textContent=RigGOI18n.t('Reiniciar Move');
   b.onclick=e=>{e.preventDefault();e.stopImmediatePropagation();openResetSheet(m)};anchor.insertAdjacentElement('beforebegin',b);
 }
 
-function styles(){if(E('riggo1235Style'))return;const s=document.createElement('style');s.id='riggo1235Style';s.textContent=`.riggo1235-reset{border-color:rgba(239,68,68,.45)!important;color:#ffb4bb!important;background:rgba(113,24,35,.18)!important}.riggo1235-reset:hover{background:rgba(140,30,42,.30)!important}@media(max-width:700px){.v3-exec-title>.row:has(#riggo1235ResetMove){grid-template-columns:repeat(4,minmax(0,1fr))!important}}`;document.head.appendChild(s)}
+function styles(){if(E('riggo1235Style'))return;const s=document.createElement('style');s.id='riggo1235Style';s.textContent=RigGOI18n.t(`.riggo1235-reset{border-color:rgba(239,68,68,.45)!important;color:#ffb4bb!important;background:rgba(113,24,35,.18)!important}.riggo1235-reset:hover{background:rgba(140,30,42,.30)!important}@media(max-width:700px){.v3-exec-title>.row:has(#riggo1235ResetMove){grid-template-columns:repeat(4,minmax(0,1fr))!important}}`);document.head.appendChild(s)}
 function post(){installLoadAuthority();injectResetButton();if(state?.screen==='execute'&&state?.execMode==='day'&&state?.execTab==='report')bindCarryNoJump()}
 function install(){if(W.__RIGGO_1235_INSTALLED__)return;W.__RIGGO_1235_INSTALLED__=true;styles();installLoadAuthority();installReportAuthority();const base=typeof W.render==='function'?W.render:(typeof render==='function'?render:null);if(base&&!base.__riggo1235){const fn=function(){const r=base.apply(this,arguments);requestAnimationFrame(post);return r};fn.__riggo1235=true;try{W.render=fn;render=fn}catch(_){W.render=fn}}post();W.RigGO1237=W.RigGO1236=W.RigGO1235={release:RELEASE,build:BUILD,directAdvanceLoad,goReport,resetMoveToReady,openResetSheet,selfCheck:()=>({ok:true,loadDirectCycle:['Pendiente','Cargada','Posicionada'],reportSingleClick:true,carryPreservesScroll:true,atomicResetRpc:'riggo_reset_move_to_ready_v1'})};}
 let tries=0;(function wait(){tries++;let ok=false;try{ok=!document.documentElement.classList.contains('riggo-booting')&&W.RigGO?.runtime?.selfCheck?.()?.ok===true&&!!W.RigGO1217}catch(_){}if(ok)return install();if(tries<500)setTimeout(wait,60);else console.error('RigGO 12.3.7 field UX patch not installed')})();

@@ -1,30 +1,16 @@
-# RigGO
+# RigGO 12.4.3
 
-RigGO supports rig Move planning, field execution, and progress reporting. A Move starts with an imported Excel plan, then tracks actual activities, loads, Flat Time, daily periods, and plan-versus-actual performance.
+Esta rama corrige la presentacion en ingles y amplia los dominios corporativos de la aplicacion a NABORS y SANAD. Build `2026-10-14-1243-A1`.
 
-This repository contains static web application release **12.3.7** (build `2026-09-26-1237-A1`). The deployable files are in `site/`. It captures the released assets and database change scripts associated with Reset and execution run compatibility.
+- `site/`: archivos estaticos de la aplicacion y PWA para Cloudflare Pages. Sin compilacion.
+- `downloads/RigGO_12_4_3_CLOUDFLARE_READY.zip`: paquete individual con `index.html` en la raiz.
+- `docs/VALIDATION_12.4.3.md`: 80 comprobaciones locales con servicios externos aislados.
+- `docs/SANAD_BACKEND_CHECK.md`: verificacion pendiente de las funciones y politicas reales de Supabase.
+- `scripts/`: verificaciones de activos, operacion, preferencias, SANAD y actualizacion offline.
+- `db/`: migraciones historicas ya aplicadas. No reaplicarlas para esta entrega.
 
-## Repository map
+Los valores de estado y opciones conservan su representacion canonica; los nombres, comentarios y datos aportados por el usuario se preservan. La preferencia de idioma sigue guardandose por cuenta y el selector superior permite cambiarla.
 
-| Path | Contents |
-| --- | --- |
-| `site/` | HTML, JavaScript, CSS, images, PWA files, and the Excel template served as static assets. |
-| `db/` | Two historical SQL changes. Read [db/README.md](db/README.md) before using them. |
-| `docs/` | [Architecture](docs/ARCHITECTURE.md), [service inventory](docs/SERVICE_INVENTORY.md), [data and security](docs/DATA_AND_TRUST.md), [operations](docs/OPERATIONS.md), [known limitations](docs/KNOWN_LIMITATIONS.md), and [release notes](docs/releases/12.3.7.md). |
-| `scripts/verify_snapshot.py` | Checks the 31 `site/` files against `SITE_SHA256SUMS.txt`. |
+SANAD debe tener cuenta habilitada por el administrador y los permisos correspondientes. El codigo del servidor `riggo-admin-users` y `riggo-send-email` no fue suministrado; no se ha desplegado una modificacion en Supabase ni se ha probado un envio real a una casilla SANAD. Las pruebas de frontera verifican la solicitud que genera el cliente usando respuestas simuladas.
 
-## Verify the release
-
-Run from the repository root with Python 3 and Node.js installed:
-
-```bash
-python3 scripts/verify_snapshot.py
-node --check site/sw.js
-node --check site/assets/riggo-app.8fd9790e3793.js
-node --check site/assets/riggo-1236-operational.ecf58ba518af.js
-node --check site/assets/riggo-1217-field-integrity.ea49ec55f6bc.js
-node --check site/assets/riggo-123-move-intelligence.79811e859444.js
-node --check site/assets/riggo-1237-field-ux.1b6be3b11202.js
-```
-
-There is no build command or dependency installation: `site/` contains the release files. The checksum manifest records their bytes; it does not establish which version is currently deployed. See [operations](docs/OPERATIONS.md) for deployment boundaries and [known limitations](docs/KNOWN_LIMITATIONS.md) for open issues.
+Los archivos de esta rama no se han promovido a produccion en Cloudflare. Para una carga manual, subir el ZIP individual al proyecto actual. Para la integracion Git, usar la carpeta `site/` con la configuracion existente y revisar el cambio antes de promover la version. Mantener el mismo dominio y los datos locales.
