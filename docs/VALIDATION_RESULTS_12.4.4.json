@@ -1,0 +1,94 @@
+{
+  "release": "12.4.4-atomic-closure-sync-c1",
+  "unit": {
+    "passed": 26,
+    "checks": [
+      "Lifecycle alignment preserves local operator and route edits",
+      "Alignment never mutates the original row",
+      "Equivalent timestamp formats do not produce a lifecycle change",
+      "Server completion overrides a locally active lifecycle",
+      "Cached close cannot complete an active server Move",
+      "Only recognized lifecycle rejections are recoverable",
+      "Delete and restore intentions never auto-retry as saves",
+      "Active server Moves never automatically close",
+      "Recovery stores a backup before clearing the rejection",
+      "Backup failure retains the untouched pending operation",
+      "Disjoint remote edits are adopted without losing local edits",
+      "Concurrent edits to the same field remain blocked",
+      "Missing comparison baseline prevents automatic overwrite",
+      "Conflicting arrays never silently overwrite remote edits",
+      "The actual operating button reaches the atomic close authority",
+      "Button delegation never closes optimistically",
+      "Missing closure authority fails without closing",
+      "Server-rejected closure propagates without local completion",
+      "Private legacy handler has no local close fallback",
+      "Pending saves do not advance revisions merely on read",
+      "Failed backups retain pending and local state during hydration",
+      "Operation and local snapshot backups have distinct identities",
+      "Recovery module loads before the sync core",
+      "Canonical origin does not strand local data behind a forced redirect",
+      "All inline and external scripts parse",
+      "Release retains both languages and both corporate domains"
+    ],
+    "realEmailsSent": false,
+    "productionDataModified": false
+  },
+  "browser": {
+    "passed": 14,
+    "checks": [
+      "desktop English dialog",
+      "desktop both pending records visible",
+      "desktop no horizontal overflow",
+      "desktop backup committed before retry",
+      "desktop Spanish dialog",
+      "desktop keyboard dismissal",
+      "desktop no page errors",
+      "mobile English dialog",
+      "mobile both pending records visible",
+      "mobile no horizontal overflow",
+      "mobile backup committed before retry",
+      "mobile Spanish dialog",
+      "mobile keyboard dismissal",
+      "mobile no page errors"
+    ],
+    "networkIsolated": true,
+    "realEmailsSent": false,
+    "productionDataModified": false
+  },
+  "two_user_sync": {
+    "passed": 7,
+    "checks": [
+      "fixture-one@nabors.com sees the authoritative completion",
+      "fixture-one@nabors.com sees both local and disjoint remote edits",
+      "fixture-one@nabors.com has no obsolete closure operation",
+      "Backed-up legacy close uses the current validated revision",
+      "fixture-two@nabors.com sees the authoritative completion",
+      "fixture-two@nabors.com sees both local and disjoint remote edits",
+      "fixture-two@nabors.com has no obsolete closure operation"
+    ],
+    "networkIsolated": true,
+    "realEmailsSent": false,
+    "productionDataModified": false
+  },
+  "service_worker_upgrade": {
+    "ok": true,
+    "upgrade": "12.4.3 -> 12.4.4",
+    "offline_boot": true,
+    "pending_operations_retained": true,
+    "account_preference_retained": true,
+    "evidence_retained": true,
+    "page_errors": []
+  },
+  "frontend_checks_passed": 48,
+  "playwright": "1.62.1",
+  "zip_sha256": "28b58f7a50b1120ed83012404b139244b51ae8fb62cb9d13f250a38831fd9c4c",
+  "zip_bytes": 3994131,
+  "site_files": 51,
+  "real_emails_sent": false,
+  "server_maintenance": {
+    "reviewed_master_lifecycles_reconciled": 5,
+    "execution_records_preserved": true,
+    "private_backups": true,
+    "broad_trigger_change": false
+  }
+}

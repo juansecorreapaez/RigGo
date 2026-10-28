@@ -6,7 +6,7 @@
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 /version.json
   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
-/assets/riggo-app.e1796d71fb18.js
+/assets/riggo-app.8c83384972c1.js
   Cache-Control: public, max-age=31536000, immutable
 /assets/riggo-app.85bcb7b21566.css
   Cache-Control: public, max-age=31536000, immutable
@@ -49,4 +49,7 @@
   Cache-Control: public, max-age=31536000, immutable
 
 /assets/riggo-identity.3a87ba8373e8.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/riggo-lifecycle.af585171dc80.js
   Cache-Control: public, max-age=31536000, immutable

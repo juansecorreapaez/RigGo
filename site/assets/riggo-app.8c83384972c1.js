@@ -19,7 +19,7 @@
     return item;
   }
   function clear(item){for(const key of ['blockedCode','blockedAt','retryApprovedAt','nextRetryAt','retryAttempts','lastAttemptAt','lastError'])delete item[key];return item}
-  function preserve(from,to){for(const key of ['blockedCode','blockedAt','nextRetryAt','retryAttempts','lastAttemptAt','lastError'])if(from?.[key]!=null)to[key]=from[key];return to}
+  function preserve(from,to){for(const key of ['blockedCode','blockedAt','nextRetryAt','retryAttempts','lastAttemptAt','lastError','lifecycleReviewError','lifecycleRepairBackup','lifecycleRebasedAt'])if(from?.[key]!=null)to[key]=from[key];return to}
   function summary(items){
     const now=Date.now(),out={total:items.length,due:0,blocked:0,deferred:0,nextRetryAt:null,lastError:''};
     for(const item of items){
@@ -2919,13 +2919,26 @@ async function hydrateCore112(){
     const pending=await idbAll112(OUTBOX_STORE),localNow=new Map((state.moves||[]).map(m=>[m.id,m]));
     const serverById=new Map(serverMoves.map(m=>[m.id,m]));
 
-    /* Sanitize durable save items BEFORE any flush. Route/destination/report edits
-       may remain local, but richer server execution is merged into the payload. */
+    // Never advance a pending save's revision merely because newer data was read.
+    // Known lifecycle rejections require a durable backup before reconciliation.
+    const lifecycleBackupFailedIds=new Set();
     for(const item0 of pending){
-      if(item0?.type!=='save')continue;const remote=serverById.get(item0.moveId),raw=rawById.get(item0.moveId);if(!remote||!raw)continue;
-      const remoteRow=moveToRow112(remote),safe=item0.row;
-      if(!same112(safe,item0.row)||Number(item0.expectedRevision)!==Number(raw.revision||0)){
-        item0.row=safe;item0.expectedRevision=Number(raw.revision)||1;item0.baseRow=clone112(remoteRow);item0.operationId=uuid112();item0.fingerprint=fingerprintRow112(safe);item0.integrityRebasedAt=new Date().toISOString();await idbPut112(OUTBOX_STORE,item0);
+      const raw=rawById.get(item0.moveId),remote=serverById.get(item0.moveId);
+      if(!raw||!remote||!window.RigGOLifecycle1244?.recoverable(item0,raw))continue;
+      const live=(state.moves||[]).find(x=>x.id===item0.moveId);
+      if(live&&fingerprint112(live)!==item0.fingerprint)continue;
+      try{
+        const repaired=await window.RigGOLifecycle1244.prepare(item0,raw,moveToRow112(remote),uuid112());
+        if(repaired){
+          if(live&&fingerprint112(live)!==item0.fingerprint)continue;
+          repaired.fingerprint=fingerprintRow112(repaired.row);await idbPut112(OUTBOX_STORE,repaired);
+          localNow.set(item0.moveId,rowToMove112({...raw,...repaired.row}));
+        }
+      }catch(error){
+        if(['pending_field_conflict','pending_baseline_missing'].includes(error.code)){
+          item0.lifecycleReviewError=String(error.message);item0.blockedCode=error.code;await idbPut112(OUTBOX_STORE,item0);
+        }else lifecycleBackupFailedIds.add(item0.moveId);
+        console.warn('RigGO pending save retained; backup/reconciliation unavailable',error);
       }
     }
 
@@ -2939,11 +2952,22 @@ async function hydrateCore112(){
       const hasLocalWork=protectedIds.has(id);
       if(hasLocalWork){
         // Preserve non-execution local work, but merge richer server execution into it.
-        const localRow=moveToRow112(local),remoteRow=moveToRow112(remote),safeRow=localRow;
+        if(lifecycleBackupFailedIds.has(id)){byId.set(id,local);continue;}
+        const localRow=moveToRow112(local),remoteRow=moveToRow112(remote);
+        if(window.RigGOLifecycle1244.differs(localRow,raw)){
+          try{
+            const original=pendingNow.find(x=>x?.type==='save'&&x.moveId===id);
+            await window.RigGOLifecycle1244.backup({type:'local_snapshot',moveId:id,operationId:original?.operationId||('revision-'+lr),row:localRow},raw);
+          }catch(error){byId.set(id,local);console.warn('RigGO local changes retained; lifecycle backup unavailable',error);continue;}
+        }
+        const safeRow=window.RigGOLifecycle1244.alignRow(localRow,raw);
         const rebuilt=rowToMove112({...raw,...safeRow,revision:rr,updated_at:raw.updated_at,updated_by:raw.updated_by,created_at:raw.created_at,created_by:raw.created_by,logical_key:raw.logical_key});
         byId.set(id,rebuilt);
         rebuilt.syncMeta.revision=rr;rebuilt.syncMeta.lastServerRow=clone112(remoteRow);rebuilt.syncMeta.lastServerFingerprint=fingerprint112(remote);lastSignatures.set(id,rebuilt.syncMeta.lastServerFingerprint);
-        markDirtyMove112(rebuilt);await queueSave112(rebuilt,{force:true,expectedRevision:rr,baseRow:remoteRow});queuedReconcile=true;continue;
+        const pendingItem=pendingNow.find(x=>x?.type==='save'&&x.moveId===id);
+        const expectedRevision=pendingItem?Number(pendingItem.expectedRevision):(Number(local.syncMeta?.revision)||rr);
+        const baseRow=pendingItem?.baseRow||local.syncMeta?.lastServerRow||remoteRow;
+        markDirtyMove112(rebuilt);await queueSave112(rebuilt,{force:true,expectedRevision,baseRow});queuedReconcile=true;continue;
       }
       // 12.0: without an explicit durable outbox operation, server wins.
       byId.set(id,remote);
@@ -4481,8 +4505,8 @@ W.__RIGGO_V115_BOOT__=boot;
 /* RigGO 12.1 · Single Runtime/Version/Cache Authority */
 (()=>{
 'use strict';
-const W=window,RELEASE='12.4.3-complete-english-sanad-c1',BUILD='2026-10-14-1243-A1';
-function stamp(){W.RIGGO_RELEASE=RELEASE;W.RIGGO_BUILD=BUILD;document.documentElement.dataset.riggoRelease=RELEASE;document.documentElement.dataset.riggoBuild=BUILD;document.title=RigGOI18n.t('RigGO · 12.4.3');document.querySelector('meta[name="riggo-release"]')?.setAttribute('content',RELEASE);document.querySelector('meta[name="riggo-build"]')?.setAttribute('content',BUILD);try{localStorage.setItem('riggo_active_release',RELEASE)}catch(_){}const box=document.querySelector('.v5-admin-build');if(box){const b=box.querySelector('b');if(b)b.textContent=RigGOI18n.t('RigGO 12.4.3');const s=box.querySelectorAll('span');if(s.length)s[s.length-1].textContent=RigGOI18n.t(BUILD)}}
+const W=window,RELEASE='12.4.4-atomic-closure-sync-c1',BUILD='2026-10-28-1244-A1';
+function stamp(){W.RIGGO_RELEASE=RELEASE;W.RIGGO_BUILD=BUILD;document.documentElement.dataset.riggoRelease=RELEASE;document.documentElement.dataset.riggoBuild=BUILD;document.title=RigGOI18n.t('RigGO · 12.4.4');document.querySelector('meta[name="riggo-release"]')?.setAttribute('content',RELEASE);document.querySelector('meta[name="riggo-build"]')?.setAttribute('content',BUILD);try{localStorage.setItem('riggo_active_release',RELEASE)}catch(_){}const box=document.querySelector('.v5-admin-build');if(box){const b=box.querySelector('b');if(b)b.textContent=RigGOI18n.t('RigGO 12.4.3');const s=box.querySelectorAll('span');if(s.length)s[s.length-1].textContent=RigGOI18n.t(BUILD)}}
 async function registerSW(){if(!('serviceWorker'in navigator)||navigator.onLine===false)return;try{const regs=await navigator.serviceWorker.getRegistrations();for(const r of regs)if(!String(r.active?.scriptURL||r.installing?.scriptURL||r.waiting?.scriptURL||'').endsWith('/sw.js'))await r.unregister();const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'});await reg.update().catch(()=>{})}catch(e){console.warn('RigGO 12.1 SW',e)}}
 async function coherence(){try{const r=await fetch('./version.json',{cache:'no-store'});if(!r.ok)return true;const v=await r.json();if(v.release!==RELEASE||v.build!==BUILD){document.documentElement.classList.add('riggo-version-mismatch');document.body?.insertAdjacentHTML('afterbegin',RigGOI18n.literal('<div style="position:fixed;inset:0;z-index:999999;background:#07111d;color:#fff;display:grid;place-items:center;font:600 18px system-ui">Actualizando RigGO…</div>'));const k='riggo_121_reload_'+v.build;if(!sessionStorage.getItem(k)){sessionStorage.setItem(k,'1');setTimeout(()=>location.reload(),450)}return false}return true}catch(_){return true}}
 function diagnostics(){const m=(W.state?.moves||[]).find(x=>x.id===W.state?.selectedMoveId);return{release:RELEASE,build:BUILD,moveId:m?.id||null,masterRevision:m?.syncMeta?.revision??null,serverStatus:m?.syncMeta?.serverStatus??m?.status??null,executionRevision:m?.execSyncMeta?.revision??null,lastExecutionWrite:m?.execSyncMeta?.updatedAt||null,integrity:m?.execIntegrity||null}}

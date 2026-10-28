@@ -1,10 +1,10 @@
 {
-  "release": "12.4.3-complete-english-sanad-c1",
-  "build": "2026-10-14-1243-A1",
-  "bundle": "riggo-app.e1796d71fb18.js",
+  "release": "12.4.4-atomic-closure-sync-c1",
+  "build": "2026-10-28-1244-A1",
+  "bundle": "riggo-app.8c83384972c1.js",
   "css": "riggo-app.85bcb7b21566.css",
   "schema": "12.3.7-stale-run-compat+atomic-reset-run-token+c4-no-cross-run-merge",
-  "stabilization": "Complete English presentation for authored static and dynamic copy, generated report defaults, mobile CSS labels and dialogs; user data and canonical values preserved. Corporate login, user administration and distribution groups accept nabors.com and sanad.com with existing approval and permissions. Server Edge Function source was not available in this delivery.",
+  "stabilization": "Atomic operating-button closure; authoritative server lifecycle; durable local backups before retry of recognized legacy completion errors.",
   "operational_bundle": "riggo-1236-operational.442039d2033a.js",
   "field_integrity_bundle": "riggo-1217-field-integrity.d63194bc3a20.js",
   "move_intelligence_bundle": "riggo-123-move-intelligence.cf6e0947a562.js",
@@ -36,5 +36,9 @@
   "allowed_corporate_domains": [
     "nabors.com",
     "sanad.com"
-  ]
+  ],
+  "lifecycle_bundle": "riggo-lifecycle.af585171dc80.js",
+  "local_lifecycle_backup_db": "riggo-lifecycle-backups-v1244",
+  "canonical_origin": "https://www.riggo.online",
+  "canonical_redirect_policy": "No forced cross-origin redirect while local changes may remain pending."
 }
